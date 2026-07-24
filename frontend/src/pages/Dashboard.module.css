@@ -87,3 +87,11 @@
   color: #4a4a6a;
   margin: 0;
 }
+
+.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  width: 100%;
+}

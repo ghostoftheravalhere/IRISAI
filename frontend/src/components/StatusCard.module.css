@@ -1,0 +1,41 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.25rem 1.5rem;
+  background: #1a1a24;
+  border: 1px solid #2a2a3a;
+  border-radius: 0.875rem;
+  min-width: 200px;
+}
+
+.title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b6b8a;
+  margin: 0;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dotOnline,
+.dotOffline {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotOnline  { background: #22c55e; box-shadow: 0 0 7px #22c55e; }
+.dotOffline { background: #ef4444; box-shadow: 0 0 7px #ef4444; }
+
+.statusText {
+  font-size: 0.9rem;
+  color: #c0c0d8;
+}

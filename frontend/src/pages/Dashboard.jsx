@@ -1,8 +1,11 @@
 import { useBackendStatus } from "../hooks/useBackendStatus";
+import { useCameraStatus } from "../hooks/useCameraStatus";
+import StatusCard from "../components/StatusCard";
 import styles from "./Dashboard.module.css";
 
 export default function Dashboard() {
   const { online, version } = useBackendStatus();
+  const { connected, running } = useCameraStatus();
 
   return (
     <main className={styles.container}>
@@ -15,6 +18,7 @@ export default function Dashboard() {
 
         <div className={styles.divider} />
 
+        {/* Backend status */}
         <div className={styles.statusRow}>
           <span className={online ? styles.dotOnline : styles.dotOffline} />
           <span className={styles.statusText}>
@@ -22,9 +26,18 @@ export default function Dashboard() {
           </span>
         </div>
 
-        {version && (
-          <p className={styles.version}>v{version}</p>
-        )}
+        {version && <p className={styles.version}>v{version}</p>}
+
+        <div className={styles.divider} />
+
+        {/* System status cards */}
+        <div className={styles.cards}>
+          <StatusCard
+            title="Camera"
+            online={connected && running}
+            label={connected && running ? "Camera Ready" : "Camera Offline"}
+          />
+        </div>
       </div>
     </main>
   );

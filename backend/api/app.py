@@ -7,7 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config.settings import settings
 from backend.utils.logger import get_logger
-from backend.api.routes import health
+from backend.api.routes import health, camera
+from backend.eye_tracking.camera_service import CameraService
 
 logger = get_logger(__name__)
 
@@ -21,13 +22,16 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        # Allow Vite dev server and Electron renderer (file://)
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
+    # Shared service instances — attached to app.state for request access
+    app.state.camera = CameraService(camera_index=settings.WEBCAM_INDEX)
+
     app.include_router(health.router)
+    app.include_router(camera.router)
 
     # Feature routers registered here as modules are built
     # from backend.api.routes import eye, voice, ai, automation
@@ -39,5 +43,11 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def on_startup():
         logger.info("IRIS AI backend started — v%s [%s]", settings.APP_VERSION, settings.APP_ENV)
+
+    @app.on_event("shutdown")
+    async def on_shutdown():
+        # Ensure the webcam is released even if the client never called /camera/stop
+        app.state.camera.stop()
+        logger.info("IRIS AI backend shut down cleanly.")
 
     return app
