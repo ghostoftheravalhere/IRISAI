@@ -1,27 +1,33 @@
 /**
- * useBackendStatus hook
- * Polls /api/status to check if the Python backend is reachable.
- * Usage: const { online } = useBackendStatus();
+ * useBackendStatus
+ * Calls GET /health on mount and every `intervalMs` milliseconds.
+ * Returns { online: boolean, version: string }
  */
 import { useState, useEffect } from "react";
 import api from "../services/api";
 
 export function useBackendStatus(intervalMs = 5000) {
-  const [online, setOnline] = useState(false);
+  const [state, setState] = useState({ online: false, version: null });
 
   useEffect(() => {
+    let cancelled = false;
+
     const check = async () => {
       try {
-        await api.get("/status");
-        setOnline(true);
+        const { data } = await api.get("/health");
+        if (!cancelled) setState({ online: true, version: data.version });
       } catch {
-        setOnline(false);
+        if (!cancelled) setState({ online: false, version: null });
       }
     };
+
     check();
     const id = setInterval(check, intervalMs);
-    return () => clearInterval(id);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [intervalMs]);
 
-  return { online };
+  return state;
 }

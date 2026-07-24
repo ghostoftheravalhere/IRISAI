@@ -1,14 +1,13 @@
 /**
  * Electron Main Process
- * Owner: Meet (frontend lead)
- * - Creates the BrowserWindow
- * - Loads Vite dev server in dev, built dist in production
- * - Sets up IPC handlers for backend communication
+ * - Creates BrowserWindow
+ * - Dev: loads Vite dev server + opens DevTools
+ * - Prod: loads built dist/index.html
  */
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow } = require("electron");
 const path = require("path");
 
-const isDev = process.env.NODE_ENV !== "production";
+const isDev = !app.isPackaged;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -16,6 +15,7 @@ function createWindow() {
     height: 800,
     minWidth: 900,
     minHeight: 600,
+    backgroundColor: "#0a0a0f",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -23,9 +23,12 @@ function createWindow() {
     },
   });
 
+  // Remove default menu bar
+  win.setMenuBarVisibility(false);
+
   if (isDev) {
     win.loadURL("http://localhost:5173");
-    win.webContents.openDevTools();
+    win.webContents.openDevTools({ mode: "detach" });
   } else {
     win.loadFile(path.join(__dirname, "../dist/index.html"));
   }
@@ -40,6 +43,3 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
-
-// IPC placeholder — handlers added per feature
-// ipcMain.handle("channel-name", async (event, args) => {});

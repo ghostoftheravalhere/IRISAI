@@ -4,7 +4,9 @@
   "description": "IRIS AI — Intelligent Responsive Interface System",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on tcp:5173 && electron .",
     "build": "vite build",
     "electron": "electron .",
     "preview": "vite preview",

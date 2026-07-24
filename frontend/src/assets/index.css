@@ -1,8 +1,16 @@
-/* Global styles — extend as design system grows */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+}
 
 body {
   font-family: system-ui, -apple-system, sans-serif;
-  background: #0f0f0f;
+  background: #0a0a0f;
   color: #f0f0f0;
+  -webkit-font-smoothing: antialiased;
 }
