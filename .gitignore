@@ -203,6 +203,13 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# IRIS AI specific
+.env
+backend/.venv/
+backend/iris_ai.db
+frontend/node_modules/
+frontend/dist/
+
 # Ruff stuff:
 .ruff_cache/
 
