@@ -1,0 +1,100 @@
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: #0a0a0f;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 2.5rem 3rem;
+  background: #13131a;
+  border: 1px solid #2a2a3a;
+  border-radius: 1.25rem;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
+  min-width: 360px;
+}
+
+.heading {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #e8e8ff;
+  margin: 0;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.dotOnline,
+.dotOffline {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dotOnline  { background: #22c55e; box-shadow: 0 0 7px #22c55e; }
+.dotOffline { background: #ef4444; box-shadow: 0 0 7px #ef4444; }
+
+.statusText {
+  font-size: 0.95rem;
+  color: #c0c0d8;
+}
+
+.error {
+  font-size: 0.85rem;
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+}
+
+button {
+  padding: 0.6rem 1.2rem;
+  border-radius: 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btnPrimary {
+  background: #4f46e5;
+  color: #fff;
+}
+.btnPrimary:not(:disabled):hover { background: #4338ca; }
+
+.btnSecondary {
+  background: #1e1e2e;
+  color: #c0c0d8;
+  border: 1px solid #3a3a4a;
+}
+.btnSecondary:not(:disabled):hover { background: #2a2a3a; }
+
+.btnGhost {
+  background: transparent;
+  color: #6b6b8a;
+  border: 1px solid #2a2a3a;
+}
+.btnGhost:not(:disabled):hover { color: #c0c0d8; border-color: #4a4a6a; }
