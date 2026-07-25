@@ -4,7 +4,9 @@ from collections.abc import Iterator
 from threading import RLock
 
 import cv2
+import numpy as np
 
+from backend.eye_tracking.face_mesh_service import EyeData, FaceMeshService
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -31,6 +33,8 @@ class CameraService:
         """Create a camera service for the configured OpenCV camera index."""
         self._index = camera_index
         self._capture: cv2.VideoCapture | None = None
+        self._face_mesh = FaceMeshService()
+        self._latest_eye_data: EyeData | None = None
         self._last_known_connected = False
         self._lock = RLock()
 
@@ -81,6 +85,7 @@ class CameraService:
             if self._capture is not None:
                 self._release_capture()
                 logger.info("Camera resources released during shutdown.")
+            self._face_mesh.close()
 
     def mjpeg_frame_stream(self) -> Iterator[bytes]:
         """Yield JPEG-encoded frames for an MJPEG HTTP stream.
@@ -128,6 +133,11 @@ class CameraService:
                 "camera_index": self._index,
             }
 
+    def get_latest_eye_data(self) -> EyeData | None:
+        """Return the latest normalized eye landmark data, if available."""
+        with self._lock:
+            return self._latest_eye_data
+
     def _read_jpeg_frame(self) -> bytes | None:
         """Read one frame from the active capture and encode it as JPEG."""
         with self._lock:
@@ -141,12 +151,27 @@ class CameraService:
             self._handle_disconnected_camera()
             return None
 
+        frame = self._process_frame(frame)
+
         encoded, buffer = cv2.imencode(".jpg", frame)
         if not encoded:
             logger.error("Camera frame JPEG encoding failed on index %d.", self._index)
             return None
 
         return buffer.tobytes()
+
+    def _process_frame(self, frame: np.ndarray) -> np.ndarray:
+        """Apply camera frame processing before MJPEG encoding."""
+        try:
+            result = self._face_mesh.process_frame(frame)
+            with self._lock:
+                self._latest_eye_data = result.eye_data
+            return result.frame
+        except Exception:
+            logger.exception("Camera frame processing failed; streaming raw frame.")
+            with self._lock:
+                self._latest_eye_data = None
+            return frame
 
     def _handle_disconnected_camera(self) -> None:
         """Mark the camera disconnected and release the failed capture."""
