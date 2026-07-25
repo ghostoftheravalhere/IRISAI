@@ -1,6 +1,7 @@
 """Camera API routes."""
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from backend.eye_tracking.camera_service import CameraServiceError
@@ -50,3 +51,21 @@ async def camera_stop(request: Request) -> dict[str, bool | int | str]:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
     return {"message": "Camera stopped.", **status}
+
+
+@router.get("/stream")
+async def camera_stream(request: Request) -> StreamingResponse:
+    """Stream MJPEG frames from the already-running camera."""
+    camera = request.app.state.camera
+    if not camera.is_running:
+        raise HTTPException(status_code=409, detail="Camera is not running.")
+
+    try:
+        stream = camera.mjpeg_frame_stream()
+    except CameraServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    return StreamingResponse(
+        stream,
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
