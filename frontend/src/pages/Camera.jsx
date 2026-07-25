@@ -1,13 +1,30 @@
 import { useCameraStatus } from "../hooks/useCameraStatus";
+import cameraService from "../services/cameraService";
 import styles from "./Camera.module.css";
 
 export default function Camera() {
   const { connected, running, loading, error, start, stop, refresh } = useCameraStatus();
+  const streamUrl = cameraService.getStreamUrl();
 
   return (
     <main className={styles.container}>
       <div className={styles.card}>
         <h2 className={styles.heading}>Camera Module</h2>
+
+        <section className={styles.previewSection} aria-label="Camera Preview">
+          <h3 className={styles.previewHeading}>Camera Preview</h3>
+          <div className={styles.previewCard}>
+            {running ? (
+              <img
+                className={styles.previewImage}
+                src={streamUrl}
+                alt="Live camera preview"
+              />
+            ) : (
+              <div className={styles.previewPlaceholder}>No Camera Feed</div>
+            )}
+          </div>
+        </section>
 
         <div className={styles.statusRow}>
           <span className={connected ? styles.dotOnline : styles.dotOffline} />
@@ -16,14 +33,12 @@ export default function Camera() {
           </span>
         </div>
 
-        {connected && (
-          <div className={styles.statusRow}>
-            <span className={running ? styles.dotOnline : styles.dotOffline} />
-            <span className={styles.statusText}>
-              {running ? "Capture Running" : "Capture Stopped"}
-            </span>
-          </div>
-        )}
+        <div className={styles.statusRow}>
+          <span className={running ? styles.dotOnline : styles.dotOffline} />
+          <span className={styles.statusText}>
+            {running ? "Camera Running" : "Camera Stopped"}
+          </span>
+        </div>
 
         {error && <p className={styles.error}>{error}</p>}
 
@@ -31,7 +46,7 @@ export default function Camera() {
           <button
             className={styles.btnPrimary}
             onClick={start}
-            disabled={loading || running || !connected}
+            disabled={loading || running}
           >
             Start Camera
           </button>
@@ -47,7 +62,7 @@ export default function Camera() {
             onClick={refresh}
             disabled={loading}
           >
-            Refresh Status
+            Refresh
           </button>
         </div>
       </div>

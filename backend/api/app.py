@@ -47,7 +47,7 @@ def create_app() -> FastAPI:
     @app.on_event("shutdown")
     async def on_shutdown():
         # Ensure the webcam is released even if the client never called /camera/stop
-        app.state.camera.stop()
+        app.state.camera.cleanup()
         logger.info("IRIS AI backend shut down cleanly.")
 
     return app
