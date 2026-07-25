@@ -95,3 +95,9 @@
   justify-content: center;
   width: 100%;
 }
+
+.cardDetail {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
