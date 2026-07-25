@@ -34,9 +34,16 @@ export default function Dashboard() {
         <div className={styles.cards}>
           <StatusCard
             title="Camera"
-            online={connected && running}
-            label={connected && running ? "Camera Ready" : "Camera Offline"}
-          />
+            online={connected}
+            label={connected ? "Camera Connected" : "Camera Not Connected"}
+          >
+            <div className={styles.cardDetail}>
+              <span className={running ? styles.dotOnline : styles.dotOffline} />
+              <span className={styles.statusText}>
+                {running ? "Camera Running" : "Camera Stopped"}
+              </span>
+            </div>
+          </StatusCard>
         </div>
       </div>
     </main>

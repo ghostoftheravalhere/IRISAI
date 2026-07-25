@@ -16,14 +16,12 @@ export default function Camera() {
           </span>
         </div>
 
-        {connected && (
-          <div className={styles.statusRow}>
-            <span className={running ? styles.dotOnline : styles.dotOffline} />
-            <span className={styles.statusText}>
-              {running ? "Capture Running" : "Capture Stopped"}
-            </span>
-          </div>
-        )}
+        <div className={styles.statusRow}>
+          <span className={running ? styles.dotOnline : styles.dotOffline} />
+          <span className={styles.statusText}>
+            {running ? "Camera Running" : "Camera Stopped"}
+          </span>
+        </div>
 
         {error && <p className={styles.error}>{error}</p>}
 
@@ -31,23 +29,23 @@ export default function Camera() {
           <button
             className={styles.btnPrimary}
             onClick={start}
-            disabled={loading || running || !connected}
+            disabled={loading || running}
           >
-            Start Camera
+            Start
           </button>
           <button
             className={styles.btnSecondary}
             onClick={stop}
             disabled={loading || !running}
           >
-            Stop Camera
+            Stop
           </button>
           <button
             className={styles.btnGhost}
             onClick={refresh}
             disabled={loading}
           >
-            Refresh Status
+            Refresh
           </button>
         </div>
       </div>

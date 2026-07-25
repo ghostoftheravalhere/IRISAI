@@ -1,43 +1,52 @@
-"""
-Camera API Routes
-Owner: Rehan
+"""Camera API routes."""
 
-Exposes CameraService over HTTP.
-The service instance is stored on app.state so it is shared across requests
-and properly released on shutdown.
-"""
 from fastapi import APIRouter, HTTPException, Request
-from backend.utils.logger import get_logger
+from pydantic import BaseModel, ConfigDict
+
+from backend.eye_tracking.camera_service import CameraServiceError
 
 router = APIRouter(prefix="/camera", tags=["camera"])
-logger = get_logger(__name__)
 
 
-@router.get("/status")
-async def camera_status(request: Request):
-    """Return whether the camera device is present and whether it is running."""
+class CameraStatusResponse(BaseModel):
+    """Camera status response returned by camera endpoints."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    connected: bool
+    running: bool
+    camera_index: int
+
+
+class CameraActionResponse(CameraStatusResponse):
+    """Camera action response with a human-readable result message."""
+
+    message: str
+
+
+@router.get("/status", response_model=CameraStatusResponse)
+async def camera_status(request: Request) -> dict[str, bool | int]:
+    """Return the current camera connection and capture status."""
     return request.app.state.camera.status()
 
 
-@router.post("/start")
-async def camera_start(request: Request):
-    """Open the webcam. Returns 409 if already running, 503 if unavailable."""
-    camera = request.app.state.camera
-    if camera.is_running:
-        raise HTTPException(status_code=409, detail="Camera is already running.")
+@router.post("/start", response_model=CameraActionResponse)
+async def camera_start(request: Request) -> dict[str, bool | int | str]:
+    """Start the camera capture session."""
     try:
-        camera.start()
-    except RuntimeError as exc:
-        logger.warning("Camera start failed: %s", exc)
-        raise HTTPException(status_code=503, detail=str(exc))
-    return {"message": "Camera started.", **camera.status()}
+        status = request.app.state.camera.start()
+    except CameraServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    return {"message": "Camera started.", **status}
 
 
-@router.post("/stop")
-async def camera_stop(request: Request):
-    """Release the webcam. Returns 409 if it was not running."""
-    camera = request.app.state.camera
-    if not camera.is_running:
-        raise HTTPException(status_code=409, detail="Camera is not running.")
-    camera.stop()
-    return {"message": "Camera stopped.", **camera.status()}
+@router.post("/stop", response_model=CameraActionResponse)
+async def camera_stop(request: Request) -> dict[str, bool | int | str]:
+    """Stop the camera capture session."""
+    try:
+        status = request.app.state.camera.stop()
+    except CameraServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+
+    return {"message": "Camera stopped.", **status}
