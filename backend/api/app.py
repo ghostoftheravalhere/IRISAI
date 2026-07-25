@@ -7,8 +7,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config.settings import settings
 from backend.utils.logger import get_logger
-from backend.api.routes import health, camera
+from backend.api.routes import health, camera, eye
 from backend.eye_tracking.camera_service import CameraService
+from backend.eye_tracking.calibration import EyeCalibrationService
+from backend.eye_tracking.gaze_service import EyeGazeService
 
 logger = get_logger(__name__)
 
@@ -29,13 +31,18 @@ def create_app() -> FastAPI:
 
     # Shared service instances — attached to app.state for request access
     app.state.camera = CameraService(camera_index=settings.WEBCAM_INDEX)
+    app.state.eye_calibration = EyeCalibrationService()
+    app.state.eye_gaze = EyeGazeService(
+        camera_service=app.state.camera,
+        calibration_service=app.state.eye_calibration,
+    )
 
     app.include_router(health.router)
     app.include_router(camera.router)
+    app.include_router(eye.router, prefix="/eye")
 
     # Feature routers registered here as modules are built
-    # from backend.api.routes import eye, voice, ai, automation
-    # app.include_router(eye.router, prefix="/eye")
+    # from backend.api.routes import voice, ai, automation
     # app.include_router(voice.router, prefix="/voice")
     # app.include_router(ai.router, prefix="/ai")
     # app.include_router(automation.router, prefix="/automation")
