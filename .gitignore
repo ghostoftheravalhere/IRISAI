@@ -208,6 +208,7 @@ backend/.venv/
 backend/iris_ai.db
 frontend/node_modules/
 frontend/dist/
+screenshots/
 
 # Ruff stuff:
 .ruff_cache/

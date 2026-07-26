@@ -171,11 +171,20 @@ class FaceMeshService:
         landmarks: Sequence[Any],
         indices: tuple[int, ...],
     ) -> tuple[NormalizedLandmark, ...]:
-        """Extract normalized landmarks by Face Mesh index."""
+        """Extract normalized landmarks by Face Mesh index.
+
+        When MediaPipe provides meaningful visibility values, reject the whole
+        eye set if any required landmark is below the confidence floor.
+        """
         extracted: list[NormalizedLandmark] = []
+        visibility_values: list[float] = []
 
         for index in indices:
             landmark = landmarks[index]
+            visibility = getattr(landmark, "visibility", None)
+            if visibility is not None and isfinite(float(visibility)):
+                visibility_values.append(float(visibility))
+
             extracted.append(
                 NormalizedLandmark(
                     index=index,
@@ -184,6 +193,12 @@ class FaceMeshService:
                     z=self._validate_depth(landmark.z),
                 )
             )
+
+        # Face Mesh often leaves visibility at 0 for all points; only enforce
+        # when the detector actually populated a useful signal.
+        if visibility_values and max(visibility_values) > 0.05:
+            if any(value < 0.5 for value in visibility_values):
+                raise ValueError("eye landmark visibility below confidence floor")
 
         return tuple(extracted)
 

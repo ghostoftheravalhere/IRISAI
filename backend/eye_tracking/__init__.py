@@ -1,1 +1,1 @@
-# Eye tracking module — webcam input, gaze detection, blink detection via MediaPipe
+# Eye tracking module — webcam input, gaze, intentional blink gestures, cursor control
