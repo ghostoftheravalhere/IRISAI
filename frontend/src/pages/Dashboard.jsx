@@ -1,11 +1,13 @@
 import { useBackendStatus } from "../hooks/useBackendStatus";
 import { useCameraStatus } from "../hooks/useCameraStatus";
+import { useVoiceStatus } from "../hooks/useVoiceStatus";
 import StatusCard from "../components/StatusCard";
 import styles from "./Dashboard.module.css";
 
 export default function Dashboard() {
   const { online, version } = useBackendStatus();
   const { connected, running } = useCameraStatus();
+  const { listening, executionStatus, detectedIntent } = useVoiceStatus({ pollMs: 2000 });
 
   return (
     <main className={styles.container}>
@@ -41,6 +43,20 @@ export default function Dashboard() {
               <span className={running ? styles.dotOnline : styles.dotOffline} />
               <span className={styles.statusText}>
                 {running ? "Camera Running" : "Camera Stopped"}
+              </span>
+            </div>
+          </StatusCard>
+
+          <StatusCard
+            title="Voice"
+            online={listening}
+            label={listening ? "Voice Listening" : "Voice Idle"}
+          >
+            <div className={styles.cardDetail}>
+              <span className={listening ? styles.dotOnline : styles.dotOffline} />
+              <span className={styles.statusText}>
+                {executionStatus}
+                {detectedIntent ? ` · ${detectedIntent}` : ""}
               </span>
             </div>
           </StatusCard>

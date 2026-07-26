@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import isfinite
+from math import hypot, isfinite
 from threading import RLock
 from time import time
 
 from backend.eye_tracking.calibration import CalibrationMapping, EyeCalibrationService, EyeCenter
 from backend.eye_tracking.camera_service import CameraService
+from backend.eye_tracking.eye_interaction_config import (
+    EyeInteractionConfig,
+    default_eye_interaction_config,
+)
 from backend.eye_tracking.face_mesh_service import EyeData
 from backend.utils.logger import get_logger
 
@@ -17,13 +21,14 @@ logger = get_logger(__name__)
 
 @dataclass(frozen=True)
 class GazeEstimate:
-    """Latest normalized gaze estimate."""
+    """Latest normalized gaze estimate with tracking confidence."""
 
     eye_center: EyeCenter
     raw_x: float
     raw_y: float
     x: float
     y: float
+    confidence: float
     captured_at: float
 
 
@@ -34,15 +39,19 @@ class EyeGazeService:
         self,
         camera_service: CameraService,
         calibration_service: EyeCalibrationService,
-        smoothing_alpha: float = 0.35,
+        smoothing_alpha: float | None = None,
+        eye_config: EyeInteractionConfig | None = None,
     ) -> None:
         """Create a gaze service using existing camera and calibration services."""
-        if not 0.0 < smoothing_alpha <= 1.0:
+        shared = eye_config or default_eye_interaction_config()
+        shared.validate()
+        alpha = shared.gaze_smoothing_alpha if smoothing_alpha is None else smoothing_alpha
+        if not 0.0 < alpha <= 1.0:
             raise ValueError("smoothing_alpha must be in the range (0.0, 1.0].")
 
         self._camera_service = camera_service
         self._calibration_service = calibration_service
-        self._smoothing_alpha = smoothing_alpha
+        self._smoothing_alpha = alpha
         self._latest_gaze: GazeEstimate | None = None
         self._smoothed_x: float | None = None
         self._smoothed_y: float | None = None
@@ -52,12 +61,10 @@ class EyeGazeService:
         """Read latest eye data and return a smoothed normalized gaze estimate."""
         eye_data = self._camera_service.get_latest_eye_data()
         if eye_data is None:
-            logger.debug("Skipping gaze estimate; no eye data is available.")
             return self._clear_latest_gaze()
 
         mapping = self._calibration_service.get_mapping()
         if mapping is None:
-            logger.debug("Skipping gaze estimate; calibration mapping is unavailable.")
             return self._clear_latest_gaze()
 
         try:
@@ -67,14 +74,25 @@ class EyeGazeService:
             logger.warning("Skipping invalid gaze estimate: %s", exc)
             return self._clear_latest_gaze()
 
+        quality = self._calibration_service.get_quality()
+        quality_score = quality.score if quality is not None else 0.0
+
         with self._lock:
             smoothed_x, smoothed_y = self._apply_smoothing(raw_x, raw_y)
+            confidence = self._compute_confidence(
+                raw_x=raw_x,
+                raw_y=raw_y,
+                smoothed_x=smoothed_x,
+                smoothed_y=smoothed_y,
+                calibration_score=quality_score,
+            )
             estimate = GazeEstimate(
                 eye_center=eye_center,
                 raw_x=raw_x,
                 raw_y=raw_y,
                 x=smoothed_x,
                 y=smoothed_y,
+                confidence=confidence,
                 captured_at=time(),
             )
             self._latest_gaze = estimate
@@ -101,6 +119,37 @@ class EyeGazeService:
             self._smoothed_x = None
             self._smoothed_y = None
         return None
+
+    def _compute_confidence(
+        self,
+        raw_x: float,
+        raw_y: float,
+        smoothed_x: float,
+        smoothed_y: float,
+        calibration_score: float,
+    ) -> float:
+        """Estimate tracking confidence from stability and calibration quality."""
+        # Compare against clamped raw so out-of-range mappings do not invent
+        # huge jitter versus the already-clamped EMA state.
+        clamped_raw_x = self._clamp_normalized(raw_x)
+        clamped_raw_y = self._clamp_normalized(raw_y)
+        jitter = hypot(clamped_raw_x - smoothed_x, clamped_raw_y - smoothed_y)
+        stability = max(0.0, 1.0 - jitter * 8.0)
+        in_bounds = self._in_bounds_factor(raw_x, raw_y)
+        calibration_factor = min(max(calibration_score, 0.0), 1.0)
+        confidence = 0.45 * stability + 0.35 * calibration_factor + 0.20 * in_bounds
+        return min(max(confidence, 0.0), 1.0)
+
+    @staticmethod
+    def _in_bounds_factor(raw_x: float, raw_y: float) -> float:
+        """Softly penalize gaze mapped outside the unit screen square."""
+        if 0.0 <= raw_x <= 1.0 and 0.0 <= raw_y <= 1.0:
+            return 1.0
+
+        dx = 0.0 if 0.0 <= raw_x <= 1.0 else min(abs(raw_x), abs(raw_x - 1.0))
+        dy = 0.0 if 0.0 <= raw_y <= 1.0 else min(abs(raw_y), abs(raw_y - 1.0))
+        overflow = hypot(dx, dy)
+        return max(0.25, 1.0 - overflow * 1.5)
 
     def _compute_eye_center(self, eye_data: EyeData) -> EyeCenter:
         """Compute one normalized gaze center from left and right eye landmarks."""

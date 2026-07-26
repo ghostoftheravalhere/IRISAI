@@ -2,16 +2,34 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from math import hypot, isfinite, sqrt
+from statistics import median
 from threading import RLock
 from time import time
 
 import numpy as np
 
-from backend.eye_tracking.face_mesh_service import EyeData
+from backend.eye_tracking.eye_interaction_config import (
+    EyeInteractionConfig,
+    default_eye_interaction_config,
+)
+from backend.eye_tracking.face_mesh_service import (
+    EyeData,
+    LEFT_EYE_LANDMARK_INDICES,
+    NormalizedLandmark,
+    RIGHT_EYE_LANDMARK_INDICES,
+)
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# MediaPipe EAR landmark order (Soukupova & Cech).
+_RIGHT_EAR_INDICES = (33, 160, 158, 133, 153, 144)
+_LEFT_EAR_INDICES = (362, 385, 387, 263, 373, 380)
+_EXPECTED_EYE_LANDMARKS = len(LEFT_EYE_LANDMARK_INDICES)
+_MAD_TO_STD = 1.4826
 
 
 @dataclass(frozen=True)
@@ -42,12 +60,23 @@ class CalibrationSample:
 
 
 @dataclass(frozen=True)
+class CalibrationQuality:
+    """Post-calibration fit quality and recalibration recommendation."""
+
+    score: float
+    rmse: float
+    label: str
+    recommend_recalibration: bool
+
+
+@dataclass(frozen=True)
 class CalibrationMapping:
     """Affine mapping from normalized eye center to normalized target point."""
 
     x_coefficients: tuple[float, float, float]
     y_coefficients: tuple[float, float, float]
     sample_count: int
+    quality: CalibrationQuality | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +88,7 @@ class CalibrationProgress:
     total_points: int
     progress: float
     complete: bool
+    quality: CalibrationQuality | None = None
 
 
 @dataclass(frozen=True)
@@ -70,6 +100,11 @@ class CalibrationState:
     mapping: CalibrationMapping | None
     complete: bool
     updated_at: float
+    quality: CalibrationQuality | None = None
+
+
+class CalibrationCaptureError(ValueError):
+    """Raised when a calibration point cannot be captured from stable samples."""
 
 
 @dataclass
@@ -94,6 +129,7 @@ class EyeCalibrationService:
             CalibrationPoint(index=8, x=0.9, y=0.9),
         )
     )
+    eye_config: EyeInteractionConfig | None = None
 
     def __post_init__(self) -> None:
         """Initialize mutable calibration state."""
@@ -103,9 +139,14 @@ class EyeCalibrationService:
             if not 0.0 <= point.x <= 1.0 or not 0.0 <= point.y <= 1.0:
                 raise ValueError("Calibration points must use normalized coordinates.")
 
+        config = self.eye_config or default_eye_interaction_config()
+        config.validate()
+        object.__setattr__(self, "eye_config", config)
+
         self._samples: list[CalibrationSample] = []
         self._saved_state: CalibrationState | None = None
         self._mapping: CalibrationMapping | None = None
+        self._quality: CalibrationQuality | None = None
         self._lock = RLock()
 
     def restart(self) -> CalibrationProgress:
@@ -114,6 +155,7 @@ class EyeCalibrationService:
             self._samples.clear()
             self._saved_state = None
             self._mapping = None
+            self._quality = None
             logger.info("Eye calibration restarted.")
             return self.get_progress()
 
@@ -130,10 +172,23 @@ class EyeCalibrationService:
                 total_points=total,
                 progress=completed / total,
                 complete=completed == total and self._mapping is not None,
+                quality=self._quality,
             )
 
+    def get_quality(self) -> CalibrationQuality | None:
+        """Return the latest calibration quality score, if available."""
+        with self._lock:
+            return self._quality
+
     def record_current_point(self, eye_data: EyeData) -> CalibrationProgress:
-        """Store normalized eye coordinates for the current calibration point."""
+        """Store one eye frame for the current point (compat path)."""
+        return self.record_current_point_from_samples((eye_data,))
+
+    def record_current_point_from_samples(
+        self,
+        eye_samples: Sequence[EyeData],
+    ) -> CalibrationProgress:
+        """Average stable gaze samples and store one calibration point."""
         with self._lock:
             progress = self.get_progress()
             if progress.complete or progress.current_point is None:
@@ -141,29 +196,39 @@ class EyeCalibrationService:
                 return progress
 
             try:
-                eye_center = self._compute_eye_center(eye_data)
-            except ValueError as exc:
-                logger.warning("Skipping invalid eye calibration sample: %s", exc)
-                return progress
+                averaged_eye_data, eye_center, accepted = self._aggregate_stable_samples(
+                    eye_samples
+                )
+            except CalibrationCaptureError as exc:
+                logger.warning("Skipping unstable eye calibration capture: %s", exc)
+                raise
 
             sample = CalibrationSample(
                 point=progress.current_point,
-                eye_data=eye_data,
+                eye_data=averaged_eye_data,
                 eye_center=eye_center,
                 captured_at=time(),
             )
             self._samples.append(sample)
             logger.info(
-                "Captured eye calibration sample %d/%d.",
+                "Captured eye calibration sample %d/%d from %d averaged frames.",
                 len(self._samples),
                 len(self.points),
+                accepted,
             )
 
             if len(self._samples) == len(self.points):
                 self._mapping = self._compute_mapping(self._samples)
+                self._quality = self._mapping.quality if self._mapping is not None else None
+                if self._quality is not None and self._quality.recommend_recalibration:
+                    logger.warning(
+                        "Calibration quality is %s (score=%.2f, rmse=%.4f). Recalibration recommended.",
+                        self._quality.label,
+                        self._quality.score,
+                        self._quality.rmse,
+                    )
 
             self.save_state()
-
             return self.get_progress()
 
     def get_mapping(self) -> CalibrationMapping | None:
@@ -180,6 +245,7 @@ class EyeCalibrationService:
                 mapping=self._mapping,
                 complete=len(self._samples) == len(self.points) and self._mapping is not None,
                 updated_at=time(),
+                quality=self._quality,
             )
             logger.info("Eye calibration state saved.")
             return self._saved_state
@@ -191,16 +257,191 @@ class EyeCalibrationService:
                 return self.save_state()
             return self._saved_state
 
+    def _aggregate_stable_samples(
+        self,
+        eye_samples: Sequence[EyeData],
+    ) -> tuple[EyeData, EyeCenter, int]:
+        """Validate, reject outliers, and average consecutive gaze samples."""
+        assert self.eye_config is not None
+        if not eye_samples:
+            raise CalibrationCaptureError("No gaze samples were provided.")
+
+        valid_frames: list[EyeData] = []
+        centers: list[EyeCenter] = []
+        previous_center: EyeCenter | None = None
+
+        for eye_data in eye_samples:
+            if not self._is_valid_calibration_frame(eye_data):
+                continue
+
+            try:
+                center = self._compute_eye_center(eye_data)
+            except ValueError:
+                continue
+
+            if previous_center is not None:
+                jump = hypot(center.x - previous_center.x, center.y - previous_center.y)
+                if jump > self.eye_config.calibration_max_center_jump:
+                    # Sudden head movement / tracking glitch — drop this frame.
+                    continue
+
+            valid_frames.append(eye_data)
+            centers.append(center)
+            previous_center = center
+
+        if len(valid_frames) < self.eye_config.calibration_min_valid_samples:
+            raise CalibrationCaptureError(
+                f"Only {len(valid_frames)} stable samples available; "
+                f"need at least {self.eye_config.calibration_min_valid_samples}."
+            )
+
+        kept_indices = self._select_inlier_indices(centers)
+        if len(kept_indices) < self.eye_config.calibration_min_valid_samples:
+            raise CalibrationCaptureError(
+                f"Only {len(kept_indices)} inlier samples remained after outlier rejection; "
+                f"need at least {self.eye_config.calibration_min_valid_samples}."
+            )
+
+        kept_frames = [valid_frames[index] for index in kept_indices]
+        kept_centers = [centers[index] for index in kept_indices]
+        mean_x = sum(center.x for center in kept_centers) / len(kept_centers)
+        mean_y = sum(center.y for center in kept_centers) / len(kept_centers)
+        dispersion = sqrt(
+            sum((center.x - mean_x) ** 2 + (center.y - mean_y) ** 2 for center in kept_centers)
+            / len(kept_centers)
+        )
+        if dispersion > self.eye_config.calibration_max_sample_dispersion:
+            raise CalibrationCaptureError(
+                f"Gaze dispersion {dispersion:.4f} exceeds "
+                f"{self.eye_config.calibration_max_sample_dispersion:.4f}; "
+                "hold still and look at the target."
+            )
+
+        averaged_eye_data = self._average_eye_data(kept_frames)
+        eye_center = EyeCenter(x=mean_x, y=mean_y)
+        return averaged_eye_data, eye_center, len(kept_centers)
+
+    def _is_valid_calibration_frame(self, eye_data: EyeData) -> bool:
+        """Reject missing landmarks, blinks, and non-finite coordinates."""
+        assert self.eye_config is not None
+        if (
+            len(eye_data.left_eye) != _EXPECTED_EYE_LANDMARKS
+            or len(eye_data.right_eye) != _EXPECTED_EYE_LANDMARKS
+        ):
+            return False
+
+        for landmark in eye_data.left_eye + eye_data.right_eye:
+            if not (
+                isfinite(landmark.x)
+                and isfinite(landmark.y)
+                and isfinite(landmark.z)
+                and 0.0 <= landmark.x <= 1.0
+                and 0.0 <= landmark.y <= 1.0
+            ):
+                return False
+
+        try:
+            left_ear = self._calculate_ear(eye_data.left_eye, _LEFT_EAR_INDICES)
+            right_ear = self._calculate_ear(eye_data.right_eye, _RIGHT_EAR_INDICES)
+        except ValueError:
+            return False
+
+        # Require both eyes open so blink frames never enter the average.
+        open_threshold = self.eye_config.ear_open_threshold
+        return left_ear >= open_threshold and right_ear >= open_threshold
+
+    def _select_inlier_indices(self, centers: Sequence[EyeCenter]) -> list[int]:
+        """Keep samples within a robust MAD envelope around the median center."""
+        assert self.eye_config is not None
+        if len(centers) <= 2:
+            return list(range(len(centers)))
+
+        xs = [center.x for center in centers]
+        ys = [center.y for center in centers]
+        median_x = median(xs)
+        median_y = median(ys)
+        mad_x = median([abs(value - median_x) for value in xs])
+        mad_y = median([abs(value - median_y) for value in ys])
+
+        # Fall back to a small absolute floor when MAD collapses (very stable gaze).
+        scale = self.eye_config.calibration_outlier_mad_scale * _MAD_TO_STD
+        limit_x = max(mad_x * scale, 1e-4)
+        limit_y = max(mad_y * scale, 1e-4)
+
+        return [
+            index
+            for index, center in enumerate(centers)
+            if abs(center.x - median_x) <= limit_x and abs(center.y - median_y) <= limit_y
+        ]
+
+    def _average_eye_data(self, eye_samples: Sequence[EyeData]) -> EyeData:
+        """Average landmark coordinates across accepted frames."""
+        return EyeData(
+            left_eye=self._average_landmarks(
+                [sample.left_eye for sample in eye_samples]
+            ),
+            right_eye=self._average_landmarks(
+                [sample.right_eye for sample in eye_samples]
+            ),
+        )
+
+    def _average_landmarks(
+        self,
+        landmark_groups: Sequence[tuple[NormalizedLandmark, ...]],
+    ) -> tuple[NormalizedLandmark, ...]:
+        """Average corresponding landmarks across frames."""
+        if not landmark_groups:
+            raise CalibrationCaptureError("Cannot average an empty landmark set.")
+
+        landmark_count = len(landmark_groups[0])
+        averaged: list[NormalizedLandmark] = []
+        for landmark_index in range(landmark_count):
+            points = [group[landmark_index] for group in landmark_groups]
+            averaged.append(
+                NormalizedLandmark(
+                    index=points[0].index,
+                    x=sum(point.x for point in points) / len(points),
+                    y=sum(point.y for point in points) / len(points),
+                    z=sum(point.z for point in points) / len(points),
+                )
+            )
+        return tuple(averaged)
+
+    def _calculate_ear(
+        self,
+        landmarks: tuple[NormalizedLandmark, ...],
+        indices: tuple[int, int, int, int, int, int],
+    ) -> float:
+        """Calculate Eye Aspect Ratio for blink rejection during capture."""
+        points = {landmark.index: landmark for landmark in landmarks}
+        try:
+            p1, p2, p3, p4, p5, p6 = (points[index] for index in indices)
+        except KeyError as exc:
+            raise ValueError(f"missing EAR landmark index {exc.args[0]}") from exc
+
+        vertical_1 = hypot(p2.x - p6.x, p2.y - p6.y)
+        vertical_2 = hypot(p3.x - p5.x, p3.y - p5.y)
+        horizontal = hypot(p1.x - p4.x, p1.y - p4.y)
+        if horizontal <= 0.0:
+            raise ValueError("horizontal eye distance is zero")
+
+        ear = (vertical_1 + vertical_2) / (2.0 * horizontal)
+        if not isfinite(ear):
+            raise ValueError("EAR is not finite")
+        return ear
+
     def _compute_eye_center(self, eye_data: EyeData) -> EyeCenter:
         """Compute one normalized eye-center point from both eyes."""
         landmarks = eye_data.left_eye + eye_data.right_eye
         if not landmarks:
             raise ValueError("Cannot calibrate without eye landmarks.")
 
-        return EyeCenter(
-            x=sum(landmark.x for landmark in landmarks) / len(landmarks),
-            y=sum(landmark.y for landmark in landmarks) / len(landmarks),
-        )
+        x = sum(landmark.x for landmark in landmarks) / len(landmarks)
+        y = sum(landmark.y for landmark in landmarks) / len(landmarks)
+        if not isfinite(x) or not isfinite(y):
+            raise ValueError("eye center contains non-finite coordinates")
+
+        return EyeCenter(x=x, y=y)
 
     def _compute_mapping(self, samples: list[CalibrationSample]) -> CalibrationMapping | None:
         """Compute affine mapping values from eye centers to calibration points."""
@@ -225,9 +466,71 @@ class EyeCalibrationService:
             logger.exception("Eye calibration mapping computation failed.")
             return None
 
-        logger.info("Computed eye calibration mapping from %d samples.", len(samples))
+        quality = self._evaluate_quality(
+            samples=samples,
+            x_coefficients=tuple(float(value) for value in x_coefficients),
+            y_coefficients=tuple(float(value) for value in y_coefficients),
+        )
+        logger.info(
+            "Computed eye calibration mapping from %d samples (quality=%s score=%.2f).",
+            len(samples),
+            quality.label,
+            quality.score,
+        )
         return CalibrationMapping(
             x_coefficients=tuple(float(value) for value in x_coefficients),
             y_coefficients=tuple(float(value) for value in y_coefficients),
             sample_count=len(samples),
+            quality=quality,
+        )
+
+    def _evaluate_quality(
+        self,
+        samples: list[CalibrationSample],
+        x_coefficients: tuple[float, float, float],
+        y_coefficients: tuple[float, float, float],
+    ) -> CalibrationQuality:
+        """Score calibration fit using in-sample 2D RMSE against target points.
+
+        RMSE = sqrt(mean(dx^2 + dy^2)) in normalized screen coordinates [0, 1].
+        Score = 1 / (1 + rmse * calibration_rmse_scale), clamped to [0, 1].
+
+        Labels (webcam usability interpretation; score formula unchanged):
+        - good: score >= calibration_good_score_threshold
+        - fair: score >= calibration_quality_threshold (cursor still usable)
+        - poor: below threshold (recommend recalibration)
+        """
+        assert self.eye_config is not None
+        squared_error = 0.0
+        for sample in samples:
+            predicted_x = (
+                x_coefficients[0] * sample.eye_center.x
+                + x_coefficients[1] * sample.eye_center.y
+                + x_coefficients[2]
+            )
+            predicted_y = (
+                y_coefficients[0] * sample.eye_center.x
+                + y_coefficients[1] * sample.eye_center.y
+                + y_coefficients[2]
+            )
+            dx = predicted_x - sample.point.x
+            dy = predicted_y - sample.point.y
+            squared_error += dx * dx + dy * dy
+
+        rmse = sqrt(squared_error / max(len(samples), 1))
+        score = 1.0 / (1.0 + rmse * self.eye_config.calibration_rmse_scale)
+        score = min(max(score, 0.0), 1.0)
+
+        if score >= self.eye_config.calibration_good_score_threshold:
+            label = "good"
+        elif score >= self.eye_config.calibration_quality_threshold:
+            label = "fair"
+        else:
+            label = "poor"
+
+        return CalibrationQuality(
+            score=score,
+            rmse=rmse,
+            label=label,
+            recommend_recalibration=score < self.eye_config.calibration_quality_threshold,
         )
