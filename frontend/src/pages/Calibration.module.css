@@ -1,0 +1,229 @@
+.container {
+  min-height: 100vh;
+  background: #0a0a0f;
+  color: #e8e8ff;
+}
+
+.overlay {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 1.25rem;
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.4rem;
+  color: #7c7ca0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  color: #f4f4ff;
+  font-size: 1.55rem;
+  font-weight: 700;
+}
+
+.progressPanel {
+  display: grid;
+  gap: 0.5rem;
+  width: min(280px, 34vw);
+}
+
+.progressText {
+  color: #d7d7ff;
+  font-size: 1rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.progressTrack {
+  height: 10px;
+  overflow: hidden;
+  background: #1e1e2e;
+  border: 1px solid #303047;
+  border-radius: 999px;
+}
+
+.progressFill {
+  height: 100%;
+  background: #22c55e;
+  transition: width 0.25s ease;
+}
+
+.statusBar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.statusBar > div {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem;
+  background: #13131a;
+  border: 1px solid #2a2a3a;
+  border-radius: 0.5rem;
+}
+
+.statusLabel {
+  color: #747494;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.statusBar strong {
+  color: #e8e8ff;
+  font-size: 0.96rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(96px, 1fr));
+  grid-template-rows: repeat(3, minmax(96px, 1fr));
+  gap: 1rem;
+  min-height: 0;
+}
+
+.pointCell {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  background: #101018;
+  border: 1px solid #27273a;
+  border-radius: 0.5rem;
+  cursor: default;
+}
+
+.pointCell:disabled {
+  opacity: 1;
+}
+
+.pointDot {
+  width: 28px;
+  height: 28px;
+  background: #6b6b8a;
+  border: 3px solid #9a9aba;
+  border-radius: 50%;
+  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pointDone .pointDot {
+  background: #22c55e;
+  border-color: #bbf7d0;
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.45);
+}
+
+.pointActive {
+  border-color: #f8fafc;
+  cursor: pointer;
+}
+
+.pointActive .pointDot {
+  width: 42px;
+  height: 42px;
+  background: #ef4444;
+  border-color: #fff;
+  box-shadow: 0 0 28px rgba(239, 68, 68, 0.85);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.error {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  color: #fecaca;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 0.5rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.btnPrimary,
+.btnSecondary,
+.btnGhost,
+.btnEnable {
+  min-width: 132px;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+}
+
+.btnPrimary {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.btnSecondary {
+  background: #1e1e2e;
+  color: #d7d7ff;
+  border: 1px solid #3a3a4a;
+}
+
+.btnGhost {
+  background: transparent;
+  color: #a4a4c4;
+  border: 1px solid #303047;
+}
+
+.btnEnable {
+  background: #16a34a;
+  color: #fff;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+@media (max-width: 760px) {
+  .overlay {
+    padding: 1rem;
+  }
+
+  .header,
+  .statusBar {
+    grid-template-columns: 1fr;
+  }
+
+  .header {
+    display: grid;
+  }
+
+  .progressPanel {
+    width: 100%;
+  }
+
+  .progressText {
+    text-align: left;
+  }
+
+  .grid {
+    gap: 0.65rem;
+    grid-template-columns: repeat(3, minmax(72px, 1fr));
+    grid-template-rows: repeat(3, minmax(72px, 1fr));
+  }
+}

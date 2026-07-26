@@ -1,0 +1,116 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.1rem 1.15rem;
+  background: #16161f;
+  border: 1px solid #2e2e42;
+  border-radius: 0.9rem;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: #e8e8ff;
+}
+
+.subtitle {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: #7a7a96;
+  line-height: 1.4;
+}
+
+.helpButton {
+  flex-shrink: 0;
+  padding: 0.45rem 0.85rem;
+  border-radius: 0.55rem;
+  border: 1px solid #3a3a4a;
+  background: #1e1e2e;
+  color: #c0c0d8;
+  font-size: 0.8rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.helpButton:hover {
+  background: #2a2a3a;
+  color: #e8e8ff;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.8rem 0.85rem;
+  background: #1a1a24;
+  border: 1px solid #2a2a3a;
+  border-radius: 0.75rem;
+}
+
+.groupTitle {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b8ba8;
+}
+
+.list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.phraseRow {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.mic {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.phrase {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #e8e8ff;
+}
+
+.description {
+  margin: 0 0 0 1.35rem;
+  font-size: 0.78rem;
+  color: #8b8ba8;
+  line-height: 1.35;
+}
+
+@media (max-width: 720px) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+}
