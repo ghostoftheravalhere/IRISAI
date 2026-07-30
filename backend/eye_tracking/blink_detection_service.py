@@ -12,6 +12,10 @@ from math import hypot, isfinite
 from threading import RLock
 from time import monotonic
 
+from backend.core.config.eye_config import (
+    LEFT_EAR_LANDMARK_INDICES,
+    RIGHT_EAR_LANDMARK_INDICES,
+)
 from backend.eye_tracking.eye_interaction_config import (
     EyeInteractionConfig,
     default_eye_interaction_config,
@@ -77,8 +81,9 @@ class BlinkDetectionService:
     left ``(362, 385, 387, 263, 373, 380)``.
     """
 
-    _RIGHT_EAR_INDICES = (33, 160, 158, 133, 153, 144)
-    _LEFT_EAR_INDICES = (362, 385, 387, 263, 373, 380)
+    # Sprint 1: use shared EAR constants while preserving existing class attrs.
+    _RIGHT_EAR_INDICES = RIGHT_EAR_LANDMARK_INDICES
+    _LEFT_EAR_INDICES = LEFT_EAR_LANDMARK_INDICES
 
     def __init__(self, config: EyeInteractionConfig | None = None) -> None:
         """Create a blink detector from the shared eye interaction config."""

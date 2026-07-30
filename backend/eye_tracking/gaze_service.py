@@ -14,6 +14,7 @@ from backend.eye_tracking.eye_interaction_config import (
     default_eye_interaction_config,
 )
 from backend.eye_tracking.face_mesh_service import EyeData
+from backend.utils.helpers import compute_eye_center
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -153,12 +154,12 @@ class EyeGazeService:
 
     def _compute_eye_center(self, eye_data: EyeData) -> EyeCenter:
         """Compute one normalized gaze center from left and right eye landmarks."""
-        landmarks = eye_data.left_eye + eye_data.right_eye
-        if not landmarks:
+        # Sprint 1: shared helper removes duplicate eye-center averaging logic.
+        center = compute_eye_center(eye_data)
+        if center is None:
             raise ValueError("eye landmark data is empty")
 
-        x = sum(landmark.x for landmark in landmarks) / len(landmarks)
-        y = sum(landmark.y for landmark in landmarks) / len(landmarks)
+        x, y = center
         if not isfinite(x) or not isfinite(y):
             raise ValueError("eye center contains non-finite coordinates")
 

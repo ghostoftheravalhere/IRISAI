@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from backend.eye_tracking.face_mesh_service import EyeData, FaceMeshService
+from backend.utils.helpers import compute_eye_center
 from backend.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -268,7 +269,8 @@ class CameraService:
                 sleep(poll_s)
                 continue
 
-            center = self._eye_data_center(eye_data)
+            # Sprint 1: shared helper removes duplicate eye-center averaging logic.
+            center = compute_eye_center(eye_data)
             if center is None:
                 sleep(poll_s)
                 continue
@@ -293,16 +295,6 @@ class CameraService:
             max_ms,
         )
         return samples
-
-    def _eye_data_center(self, eye_data: EyeData) -> tuple[float, float] | None:
-        """Return a quick eye-center estimate used for frame deduplication."""
-        landmarks = eye_data.left_eye + eye_data.right_eye
-        if not landmarks:
-            return None
-        return (
-            sum(landmark.x for landmark in landmarks) / len(landmarks),
-            sum(landmark.y for landmark in landmarks) / len(landmarks),
-        )
 
     def _stop_processing_loop(self) -> None:
         """Signal and join the background capture/processing thread."""
