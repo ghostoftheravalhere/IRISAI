@@ -1,5 +1,6 @@
-"""Compatibility shim for the canonical perception Face Mesh provider."""
+"""Camera perception providers."""
 
+from backend.perception.camera.capture_service import CaptureService
 from backend.perception.camera.face_mesh_provider import (
     LEFT_EYE_LANDMARK_INDICES,
     RIGHT_EYE_LANDMARK_INDICES,
@@ -10,6 +11,7 @@ from backend.perception.camera.face_mesh_provider import (
 )
 
 __all__ = [
+    "CaptureService",
     "EyeData",
     "FaceMeshFrameResult",
     "FaceMeshService",
