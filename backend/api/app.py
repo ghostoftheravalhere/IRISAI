@@ -2,6 +2,8 @@
 FastAPI Application Factory
 Creates and configures the FastAPI app with all routers and middleware.
 """
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -37,11 +39,44 @@ from backend.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI application lifespan context manager for startup and shutdown actions."""
+    eye_config = getattr(app.state, "eye_interaction_config", None)
+    logger.info("IRIS AI backend started - v%s [%s]", settings.APP_VERSION, settings.APP_ENV)
+    if eye_config:
+        logger.info(
+            "Eye interaction ready: intentional blink %.0f-%.0f ms, confidence threshold %.2f",
+            eye_config.intentional_blink_min_ms,
+            eye_config.intentional_blink_max_ms,
+            eye_config.tracking_confidence_threshold,
+        )
+    logger.info(
+        "Voice command pipeline ready (Whisper model=%s, sample_rate=%s)",
+        settings.WHISPER_MODEL,
+        settings.MIC_SAMPLE_RATE,
+    )
+    if hasattr(app.state, "lifecycle_manager"):
+        app.state.lifecycle_manager.startup()
+
+    yield
+
+    # Ensure webcam and voice streams are released cleanly upon server shutdown.
+    if hasattr(app.state, "lifecycle_manager"):
+        app.state.lifecycle_manager.shutdown(reason="server_shutdown")
+    if hasattr(app.state, "voice") and app.state.voice is not None:
+        app.state.voice.stop()
+    if hasattr(app.state, "camera") and app.state.camera is not None:
+        app.state.camera.cleanup()
+    logger.info("IRIS AI backend shut down cleanly.")
+
+
 def create_app() -> FastAPI:
     app = FastAPI(
         title="IRIS AI Backend",
         version=settings.APP_VERSION,
         docs_url="/docs" if settings.DEBUG else None,
+        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -53,7 +88,6 @@ def create_app() -> FastAPI:
 
     container = build_container(settings)
     _attach_container(app, container)
-    eye_config = container.eye_interaction_config
 
     app.include_router(health.router)
     app.include_router(camera.router)
@@ -92,32 +126,6 @@ def create_app() -> FastAPI:
         if hasattr(app.state, "metrics_registry"):
             return app.state.metrics_registry.get_metrics_summary()
         return {}
-
-    @app.on_event("startup")
-    async def on_startup():
-        logger.info("IRIS AI backend started - v%s [%s]", settings.APP_VERSION, settings.APP_ENV)
-        logger.info(
-            "Eye interaction ready: intentional blink %.0f-%.0f ms, confidence threshold %.2f",
-            eye_config.intentional_blink_min_ms,
-            eye_config.intentional_blink_max_ms,
-            eye_config.tracking_confidence_threshold,
-        )
-        logger.info(
-            "Voice command pipeline ready (Whisper model=%s, sample_rate=%s)",
-            settings.WHISPER_MODEL,
-            settings.MIC_SAMPLE_RATE,
-        )
-        if hasattr(app.state, "lifecycle_manager"):
-            app.state.lifecycle_manager.startup()
-
-    @app.on_event("shutdown")
-    async def on_shutdown():
-        # Ensure the webcam is released even if the client never called /camera/stop.
-        if hasattr(app.state, "lifecycle_manager"):
-            app.state.lifecycle_manager.shutdown(reason="server_shutdown")
-        app.state.voice.stop()
-        app.state.camera.cleanup()
-        logger.info("IRIS AI backend shut down cleanly.")
 
     return app
 
