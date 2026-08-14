@@ -4,13 +4,104 @@
   padding: 0;
 }
 
+:root {
+  --bg-dark: #0a0c14;
+  --bg-card: rgba(18, 22, 36, 0.75);
+  --bg-glass: rgba(255, 255, 255, 0.05);
+  --border-glass: rgba(255, 255, 255, 0.12);
+  --accent-cyan: #00f2fe;
+  --accent-blue: #4facfe;
+  --accent-violet: #7f00ff;
+  --accent-gold: #ffb703;
+  --accent-green: #00e676;
+  --accent-red: #ff1744;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  --radius-lg: 16px;
+  --radius-md: 10px;
+  --shadow-glass: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
 html, body, #root {
   height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
 
 body {
-  font-family: system-ui, -apple-system, sans-serif;
-  background: #0a0a0f;
-  color: #f0f0f0;
+  font-family: var(--font-family);
+  background: var(--bg-dark);
+  color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+/* Glassmorphism utility classes */
+.glass-panel {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-glass);
+  border-radius: var(--radius-lg);
+}
+
+.glass-pill {
+  background: rgba(30, 41, 59, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Keyframe Animations */
+@keyframes breath {
+  0%, 100% { transform: scale(1); opacity: 0.8; box-shadow: 0 0 15px rgba(0, 242, 254, 0.3); }
+  50% { transform: scale(1.05); opacity: 1; box-shadow: 0 0 30px rgba(0, 242, 254, 0.7); }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); opacity: 0.9; }
+  50% { transform: scale(1.15); opacity: 0.4; }
+  100% { transform: scale(0.95); opacity: 0.9; }
+}
+
+@keyframes wave-bars {
+  0%, 100% { height: 8px; }
+  50% { height: 28px; }
+}
+
+@keyframes gold-flash {
+  0% { box-shadow: 0 0 5px var(--accent-gold); }
+  50% { box-shadow: 0 0 35px var(--accent-gold); }
+  100% { box-shadow: 0 0 5px var(--accent-gold); }
+}
+
+.animate-breath {
+  animation: breath 3s infinite ease-in-out;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.8s infinite ease-in-out;
+}
+
+.animate-gold-flash {
+  animation: gold-flash 0.8s ease-in-out infinite;
 }

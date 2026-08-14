@@ -1,0 +1,70 @@
+.container {
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-glass);
+  padding-bottom: 10px;
+}
+
+.title {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.healthBadge {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 1px;
+}
+
+.healthy {
+  background: rgba(0, 230, 118, 0.2);
+  color: var(--accent-green);
+  border: 1px solid rgba(0, 230, 118, 0.4);
+}
+
+.unhealthy {
+  background: rgba(255, 23, 68, 0.2);
+  color: var(--accent-red);
+  border: 1px solid rgba(255, 23, 68, 0.4);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.card {
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metricLabel {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.metricVal {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+}

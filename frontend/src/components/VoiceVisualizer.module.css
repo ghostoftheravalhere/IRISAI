@@ -1,0 +1,91 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.orb {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.4s ease;
+}
+
+.core {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.8);
+}
+
+.idle {
+  background: radial-gradient(circle, rgba(0, 242, 254, 0.4) 0%, rgba(79, 172, 254, 0.1) 70%);
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.3);
+  animation: breath 3s infinite ease-in-out;
+}
+
+.listening {
+  background: radial-gradient(circle, rgba(0, 230, 118, 0.6) 0%, rgba(0, 230, 118, 0.15) 70%);
+  box-shadow: 0 0 25px rgba(0, 230, 118, 0.6);
+  transform: scale(1.1);
+}
+
+.thinking {
+  background: radial-gradient(circle, rgba(127, 0, 255, 0.7) 0%, rgba(225, 0, 255, 0.2) 70%);
+  box-shadow: 0 0 30px rgba(127, 0, 255, 0.7);
+  animation: pulse-ring 1.5s infinite ease-in-out;
+}
+
+.speaking {
+  background: radial-gradient(circle, rgba(0, 242, 254, 0.8) 0%, rgba(127, 0, 255, 0.3) 70%);
+  box-shadow: 0 0 30px rgba(0, 242, 254, 0.8);
+}
+
+.wakeWord {
+  background: radial-gradient(circle, rgba(255, 183, 3, 0.85) 0%, rgba(255, 183, 3, 0.25) 70%);
+  box-shadow: 0 0 35px var(--accent-gold);
+  animation: gold-flash 0.8s ease-in-out infinite;
+}
+
+.waveGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+}
+
+.bar {
+  width: 4px;
+  background: var(--accent-green);
+  border-radius: 2px;
+  transition: height 0.1s ease;
+}
+
+.stateLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+@keyframes breath {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes pulse-ring {
+  0%, 100% { transform: scale(0.98); }
+  50% { transform: scale(1.12); }
+}
+
+@keyframes gold-flash {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
