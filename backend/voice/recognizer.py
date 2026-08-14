@@ -8,7 +8,10 @@ from enum import Enum
 from threading import Event, RLock, Thread
 from typing import Any
 
+from backend.core.events.bus import EventBus
 from backend.utils.logger import get_logger
+from backend.voice.preprocessor import AdaptiveGainControlFilter, AudioPreprocessor, PeakLimiterFilter
+from backend.voice.telemetry import AudioCapturedEvent, TranscriptionCompletedEvent
 
 logger = get_logger(__name__)
 
@@ -22,16 +25,14 @@ class ListenMode(str, Enum):
     PUSH_TO_TALK = "push_to_talk"
 
 
-# Biases Whisper toward short command phrases without changing the pipeline.
-_COMMAND_INITIAL_PROMPT = (
-    "Open Chrome. Close Window. Copy. Paste. Scroll Up. Scroll Down. "
-    "Volume Up. Volume Down. Mute. Take Screenshot. Open Notepad. Select All."
-)
+# Keep Whisper unbiased for short clips; command-heavy prompts can turn silence
+# or low-noise audio into actionable command hallucinations.
+_COMMAND_INITIAL_PROMPT: str | None = None
 
 
 @dataclass(frozen=True)
 class VoiceRecognitionConfig:
-    """Runtime configuration for microphone capture and transcription."""
+    """Voice recognition runtime configuration."""
 
     model_size: str = "base"
     sample_rate: int = 16000
@@ -47,6 +48,11 @@ class VoiceRecognitionConfig:
     peak_norm_target: float = 0.85
     no_speech_threshold: float = 0.55
     listen_mode: ListenMode = ListenMode.CONTINUOUS
+    enable_agc: bool = True
+    target_rms: float = 0.04
+    max_agc_gain: float = 40.0
+    preprocessor: AudioPreprocessor | None = None
+    event_bus: EventBus | None = None
 
 
 @dataclass(frozen=True)
@@ -73,6 +79,18 @@ class VoiceRecognitionService:
     ) -> None:
         self._config = config or VoiceRecognitionConfig()
         self._on_transcript = on_transcript
+        self._event_bus = self._config.event_bus
+        self._preprocessor = self._config.preprocessor or AudioPreprocessor(
+            filters=[
+                AdaptiveGainControlFilter(
+                    target_rms=self._config.target_rms,
+                    max_gain=self._config.max_agc_gain,
+                    enabled=self._config.enable_agc,
+                ),
+                PeakLimiterFilter(),
+            ],
+            enabled=True,
+        )
         self._model: Any | None = None
         self._thread: Thread | None = None
         self._stop_event = Event()
@@ -136,11 +154,14 @@ class VoiceRecognitionService:
     def push_to_talk_start(self) -> VoiceRecognitionState:
         """Begin capturing audio while push-to-talk mode is active."""
         with self._lock:
+            logger.info("TRACE [1/11]: push_to_talk_start() called. listening=%s, mode=%s", self._listening, self._listen_mode)
             if self._listen_mode != ListenMode.PUSH_TO_TALK:
                 self._error = "Push-to-talk is only available in push_to_talk mode."
+                logger.info("TRACE STOPPED AT [1/11]: Push-to-talk rejected (not in push_to_talk mode).")
                 return self.get_state()
             if not self._listening:
                 self._error = "Voice recognition is not listening. Call start first."
+                logger.info("TRACE STOPPED AT [1/11]: Push-to-talk rejected (not listening).")
                 return self.get_state()
 
             self._error = None
@@ -152,6 +173,7 @@ class VoiceRecognitionService:
     def push_to_talk_stop(self) -> VoiceRecognitionState:
         """Stop capturing audio in push-to-talk mode and flush any buffered speech."""
         with self._lock:
+            logger.info("TRACE [PTT STOP]: push_to_talk_stop() called. Clearing PTT active flag.")
             self._ptt_active.clear()
             if self._listening and self._listen_mode == ListenMode.PUSH_TO_TALK:
                 self._execution_status = "Waiting for push-to-talk"
@@ -207,11 +229,15 @@ class VoiceRecognitionService:
                 trailing_buffer: list[Any] = []
 
                 while not self._stop_event.is_set():
+                    with self._lock:
+                        is_ptt_mode = (self._listen_mode == ListenMode.PUSH_TO_TALK)
+
                     if not self._should_capture():
                         if speech_blocks:
-                            if len(speech_blocks) >= min_blocks_required:
-                                audio = np.concatenate(speech_blocks)
-                                self._handle_audio(audio)
+                            logger.info("TRACE [2/11]: _run_loop() receives audio! PTT released and audio buffer flushed.")
+                            logger.info("TRACE [3/11]: Number of captured blocks = %d", len(speech_blocks))
+                            audio = np.concatenate(speech_blocks)
+                            self._handle_audio(audio)
                             speech_blocks = []
                             silent_blocks = 0
                             trailing_buffer = []
@@ -223,6 +249,13 @@ class VoiceRecognitionService:
                         logger.warning("Microphone input overflow while listening.")
 
                     mono_block = np.asarray(block, dtype=np.float32).reshape(-1)
+
+                    if is_ptt_mode:
+                        # Push-to-Talk mode: bypass RMS gating and accumulate every block while PTT is active.
+                        speech_blocks.append(mono_block.copy())
+                        continue
+
+                    # Continuous mode: RMS silence gating and endpointing logic.
                     rms = float(np.sqrt(np.mean(np.square(mono_block)))) if mono_block.size else 0.0
 
                     if rms >= self._config.silence_threshold:
@@ -254,7 +287,8 @@ class VoiceRecognitionService:
                             self._handle_audio(audio)
                         else:
                             with self._lock:
-                                self._execution_status = "Empty speech"
+                                if self._latest_transcript is None:
+                                    self._execution_status = "Empty speech"
                         speech_blocks = []
                         silent_blocks = 0
                         trailing_buffer = []
@@ -294,8 +328,70 @@ class VoiceRecognitionService:
 
     def _handle_audio(self, audio: Any) -> None:
         """Transcribe captured audio and dispatch the transcript callback."""
+        raw_wav_file = "c:/Users/Meet Raval/IRISAI/live_debug_raw.wav"
+        prep_wav_file = "c:/Users/Meet Raval/IRISAI/live_debug_prep.wav"
         try:
+            import wave
+            import numpy as np
+
+            raw_samples = np.asarray(audio, dtype=np.float32).reshape(-1)
+            raw_rms = float(np.sqrt(np.mean(np.square(raw_samples)))) if raw_samples.size else 0.0
+            raw_peak = float(np.max(np.abs(raw_samples))) if raw_samples.size else 0.0
+            duration = float(raw_samples.size / self._config.sample_rate) if self._config.sample_rate else 0.0
+
+            # Save RAW WAV
+            int_raw = (np.clip(raw_samples, -1.0, 1.0) * 32767.0).astype(np.int16)
+            with wave.open(raw_wav_file, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(self._config.sample_rate)
+                wf.writeframes(int_raw.tobytes())
+
+            prep_samples = self._preprocess_audio(raw_samples)
+            int_prep = (np.clip(prep_samples, -1.0, 1.0) * 32767.0).astype(np.int16)
+            with wave.open(prep_wav_file, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(self._config.sample_rate)
+                wf.writeframes(int_prep.tobytes())
+
+            with self._lock:
+                vad_active = (self._listen_mode == ListenMode.PUSH_TO_TALK)
+
+            logger.info("=== LIVE UTTERANCE AUDIT LOG ===")
+            logger.info("  Raw Microphone RMS   : %.6f", raw_rms)
+            logger.info("  Raw Microphone Peak  : %.6f", raw_peak)
+            logger.info("  Audio Duration       : %.3fs", duration)
+            logger.info("  Saved RAW wav        : %s", raw_wav_file)
+            logger.info("  Saved PREPROCESSED   : %s", prep_wav_file)
+            logger.info("  Whisper Model Name   : %s", self._config.model_size)
+            logger.info("  Whisper Parameters   : language=%s, beam_size=5, vad_filter=%s, initial_prompt='%s'",
+                        self._config.language, vad_active, _COMMAND_INITIAL_PROMPT)
+            if self._event_bus:
+                self._event_bus.publish(
+                    AudioCapturedEvent(
+                        raw_rms=raw_rms,
+                        raw_peak=raw_peak,
+                        duration_seconds=duration,
+                        is_ptt=vad_active,
+                    )
+                )
+        except Exception:
+            logger.exception("Voice debug audio metric logging failed.")
+
+        try:
+            import time
+            t0 = time.time()
             transcript = self._transcribe(audio)
+            latency_ms = (time.time() - t0) * 1000.0
+
+            if self._event_bus:
+                self._event_bus.publish(
+                    TranscriptionCompletedEvent(
+                        raw_transcript=transcript,
+                        whisper_latency_ms=latency_ms,
+                    )
+                )
         except Exception:
             logger.exception("Whisper transcription failed.")
             with self._lock:
@@ -304,10 +400,14 @@ class VoiceRecognitionService:
             return
 
         if not transcript:
+            logger.info("  Raw Transcript       : '<EMPTY>'")
+            logger.info("  Normalized Transcript: '<EMPTY>'")
+            logger.info("  Final Intent         : %s", VoiceRecognitionService._empty_intent() if self._latest_transcript is None else self._detected_intent)
+            logger.info("================================")
             with self._lock:
-                self._latest_transcript = None
-                self._detected_intent = VoiceRecognitionService._empty_intent()
-                self._execution_status = "Empty speech"
+                if self._latest_transcript is None:
+                    self._detected_intent = VoiceRecognitionService._empty_intent()
+                    self._execution_status = "Empty speech"
                 self._error = None
             return
 
@@ -319,6 +419,11 @@ class VoiceRecognitionService:
             except Exception:
                 logger.exception("Voice transcript handler failed.")
                 execution_status = "Intent handling failed."
+
+        logger.info("  Raw Transcript       : '%s'", transcript)
+        logger.info("  Final Intent         : %s", detected_intent)
+        logger.info("  Execution Status     : %s", execution_status)
+        logger.info("================================")
 
         with self._lock:
             self._latest_transcript = transcript
@@ -332,13 +437,14 @@ class VoiceRecognitionService:
 
         model = self._load_model()
         prepared = self._preprocess_audio(np.asarray(audio, dtype=np.float32))
-        # Do not run Whisper VAD again: RMS endpointing already isolated the
-        # utterance. A second VAD pass frequently drops short command clips.
+        with self._lock:
+            use_vad_filter = (self._listen_mode == ListenMode.PUSH_TO_TALK)
+
         segments, _info = model.transcribe(
             prepared,
             language=self._config.language,
             task="transcribe",
-            vad_filter=False,
+            vad_filter=use_vad_filter,
             beam_size=5,
             best_of=5,
             temperature=0.0,
@@ -350,33 +456,37 @@ class VoiceRecognitionService:
         )
 
         parts: list[str] = []
+        logger.info("Whisper:")
         for segment in segments:
             text = (segment.text or "").strip()
-            if not text:
-                continue
             no_speech = float(getattr(segment, "no_speech_prob", 0.0) or 0.0)
-            if no_speech >= self._config.no_speech_threshold:
+            avg_logprob = float(getattr(segment, "avg_logprob", 0.0) or 0.0)
+            logger.info("TRACE [8/11]: no_speech_prob = %.6f", no_speech)
+            logger.info("TRACE [9/11]: avg_logprob = %.6f", avg_logprob)
+            logger.info("- segment.text: %s", text)
+            logger.info("- no_speech_prob: %.6f (threshold: %.6f)", no_speech, self._config.no_speech_threshold)
+            logger.info("- avg_logprob: %.6f", avg_logprob)
+            if not text:
+                logger.info("  -> Dropped: empty segment text")
                 continue
+            if no_speech >= self._config.no_speech_threshold:
+                logger.info("  -> Dropped by secondary no_speech_threshold (%.6f >= %.6f)", no_speech, self._config.no_speech_threshold)
+                continue
+            logger.info("  -> Kept segment text: %s", text)
             parts.append(text)
-        return " ".join(parts).strip()
+        result_text = " ".join(parts).strip()
+        logger.info("TRACE [7/11]: Transcript returned by Whisper = '%s'", result_text)
+        return result_text
 
     def _preprocess_audio(self, audio: Any) -> Any:
-        """Peak-normalize short command clips for more stable Whisper input."""
+        """Preprocess audio via injected AudioPreprocessor pipeline."""
         import numpy as np
 
         samples = np.asarray(audio, dtype=np.float32).reshape(-1)
         if samples.size == 0:
             return samples
 
-        peak = float(np.max(np.abs(samples)))
-        if peak < 1e-4:
-            return samples
-
-        target = self._config.peak_norm_target
-        gain = target / peak
-        # Avoid extreme amplification of near-silence bursts.
-        gain = min(max(gain, 0.5), 12.0)
-        return samples * gain
+        return self._preprocessor.process(samples, self._config.sample_rate)
 
     def _load_model(self) -> Any:
         """Load Faster-Whisper lazily on first listening session."""

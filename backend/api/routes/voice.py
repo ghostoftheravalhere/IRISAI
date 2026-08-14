@@ -110,3 +110,11 @@ async def voice_ptt_stop(request: Request) -> dict[str, object]:
     """Stop capturing in push-to-talk mode."""
     state = request.app.state.voice.push_to_talk_stop()
     return _serialize(state, message="Push-to-talk stopped.")
+
+
+@router.get("/telemetry")
+async def voice_telemetry(request: Request) -> dict[str, object]:
+    """Return current voice telemetry metrics and execution history."""
+    if not hasattr(request.app.state, "voice_telemetry"):
+        raise HTTPException(status_code=503, detail="Voice telemetry service not initialized.")
+    return request.app.state.voice_telemetry.get_summary()

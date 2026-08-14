@@ -11,9 +11,14 @@ from dataclasses import dataclass
 from threading import RLock
 from typing import TYPE_CHECKING
 
+from backend.brain.fusion import MultimodalFusionEngine, PerceptionEvent
+from backend.brain.orchestrator import BrainOrchestrator, OrchestrationRequest
 from backend.automation.dispatcher import AutomationDispatcher, AutomationResult
+from backend.core.events.bus import EventBus
 from backend.utils.logger import get_logger
 from backend.voice.command_parser import IntentParserService, VoiceIntent, VoiceIntentType
+from backend.voice.normalizer import TranscriptNormalizer
+from backend.voice.telemetry import AutomationExecutedEvent, IntentParsedEvent
 
 if TYPE_CHECKING:
     from backend.eye_tracking.action_engine import ActionEngine
@@ -23,7 +28,7 @@ logger = get_logger(__name__)
 
 @dataclass(frozen=True)
 class VoicePipelineResult:
-    """Structured result of handling one voice transcript."""
+    """Consolidated outcome of voice command processing and dispatch."""
 
     intent: str
     message: str
@@ -35,8 +40,8 @@ class VoiceCommandPipeline:
     """Wire voice intents through the shared ActionEngine action pipeline.
 
     Flow:
-        transcript → IntentParserService → ActionEngine gate → AutomationDispatcher
-        → DesktopController
+        transcript → TranscriptNormalizer → IntentParserService → ActionEngine gate → MultimodalFusionEngine
+        → BrainOrchestrator → AutomationDispatcher → DesktopController
     """
 
     def __init__(
@@ -44,10 +49,18 @@ class VoiceCommandPipeline:
         intent_parser: IntentParserService,
         action_engine: ActionEngine,
         automation_dispatcher: AutomationDispatcher,
+        normalizer: TranscriptNormalizer | None = None,
+        event_bus: EventBus | None = None,
+        orchestrator: BrainOrchestrator | None = None,
+        fusion_engine: MultimodalFusionEngine | None = None,
     ) -> None:
         self._intent_parser = intent_parser
         self._action_engine = action_engine
         self._automation_dispatcher = automation_dispatcher
+        self._normalizer = normalizer or TranscriptNormalizer()
+        self._event_bus = event_bus
+        self._orchestrator = orchestrator
+        self._fusion_engine = fusion_engine
         self._lock = RLock()
 
     def handle_transcript(self, transcript: str) -> tuple[str, str]:
@@ -67,8 +80,22 @@ class VoiceCommandPipeline:
                     transcript=text,
                 )
 
-            voice_intent = self._intent_parser.parse(text)
+            normalized_text = self._normalizer.normalize(text)
+            voice_intent = self._intent_parser.parse(normalized_text)
+
+            if self._event_bus:
+                self._event_bus.publish(
+                    IntentParsedEvent(
+                        raw_transcript=text,
+                        normalized_transcript=normalized_text,
+                        intent=voice_intent.intent.value if voice_intent else None,
+                        rule_applied=getattr(voice_intent, "rule_name", None),
+                    )
+                )
+
             if voice_intent.intent == VoiceIntentType.NO_INTENT:
+                logger.info("Pipeline:")
+                logger.info("- ActionEngine request: skipped (NO_INTENT)")
                 return VoicePipelineResult(
                     intent=VoiceIntentType.NO_INTENT.value,
                     message="Unknown command.",
@@ -84,7 +111,40 @@ class VoiceCommandPipeline:
                     transcript=text,
                 )
 
+            if self._orchestrator is not None:
+                if self._fusion_engine is not None:
+                    pevent = PerceptionEvent(
+                        source="voice",
+                        intent=voice_intent.intent.value,
+                        confidence=1.0,
+                        target=voice_intent.target,
+                        raw_text=text,
+                        query=voice_intent.query,
+                        params=voice_intent.params,
+                    )
+                    fused = self._fusion_engine.ingest_event(pevent)
+                    orch_response = self._orchestrator.process_fusion_result(fused, source="voice")
+                else:
+                    orch_response = self._orchestrator.process_intent(
+                        OrchestrationRequest(source="voice", intent=voice_intent, raw_transcript=text)
+                    )
+                return VoicePipelineResult(
+                    intent=orch_response.intent,
+                    message=orch_response.message,
+                    success=orch_response.success,
+                    transcript=text,
+                )
+
             automation_result = self._automation_dispatcher.dispatch(voice_intent)
+            if self._event_bus:
+                self._event_bus.publish(
+                    AutomationExecutedEvent(
+                        intent=automation_result.intent.value,
+                        action=automation_result.intent.value,
+                        success=automation_result.success,
+                        execution_status=automation_result.message,
+                    )
+                )
             return self._to_pipeline_result(automation_result, text)
 
     def _action_engine_allows(self, voice_intent: VoiceIntent) -> bool:
@@ -95,6 +155,13 @@ class VoiceCommandPipeline:
         logging without mutating eye-tracking gesture state.
         """
         state = self._action_engine.get_latest_state()
+        logger.info("Pipeline:")
+        logger.info(
+            "- ActionEngine request: intent=%s action=%s cursorPaused=%s",
+            voice_intent.intent.value,
+            state.action.value,
+            state.cursorPaused,
+        )
         logger.info(
             "Voice intent %s through ActionEngine pipeline (action=%s, cursorPaused=%s)",
             voice_intent.intent.value,
