@@ -3,14 +3,19 @@
  * - Creates BrowserWindow
  * - Dev: loads Vite dev server + opens DevTools
  * - Prod: loads built dist/index.html
+ * - Manages Python backend lifecycle via BackendManager & exposes IPC handlers
  */
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
+const BackendManager = require("./backendManager");
 
 const isDev = !app.isPackaged;
+const backendManager = new BackendManager();
+let mainWindow = null;
+let isQuitting = false;
 
 function createWindow() {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 900,
@@ -24,20 +29,70 @@ function createWindow() {
   });
 
   // Remove default menu bar
-  win.setMenuBarVisibility(false);
+  mainWindow.setMenuBarVisibility(false);
 
   if (isDev) {
-    win.loadURL("http://localhost:5173");
-    win.webContents.openDevTools({ mode: "detach" });
+    mainWindow.loadURL("http://localhost:5173");
+    mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
-    win.loadFile(path.join(__dirname, "../dist/index.html"));
+    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
+
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 }
 
-app.whenReady().then(createWindow);
+// Wire IPC Status Handlers
+ipcMain.handle("backend:get-status", () => {
+  return backendManager.getStatusState();
+});
+
+ipcMain.handle("backend:restart", async () => {
+  try {
+    await backendManager.restart();
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+backendManager.onStatusChange = (statusState) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("backend:status-changed", statusState);
+  }
+};
+
+app.whenReady().then(async () => {
+  try {
+    await backendManager.start();
+  } catch (err) {
+    console.error("[ELECTRON CRITICAL] Startup failed:", err.message);
+  } finally {
+    createWindow();
+  }
+});
+
+app.on("before-quit", async (event) => {
+  if (isQuitting) return;
+
+  if (backendManager.ownedByElectron && backendManager.childProcess) {
+    event.preventDefault();
+    isQuitting = true;
+    try {
+      await backendManager.stop();
+    } catch (err) {
+      console.error("[ELECTRON] Error stopping backend:", err);
+    } finally {
+      app.quit();
+    }
+  }
+});
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
 });
 
 app.on("activate", () => {
