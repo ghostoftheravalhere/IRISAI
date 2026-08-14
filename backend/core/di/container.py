@@ -11,10 +11,19 @@ from dataclasses import dataclass
 from backend.automation.controller import DesktopController
 from backend.automation.dispatcher import AutomationDispatcher
 from backend.brain.context_manager import ContextManager
+from backend.brain.context_store import ContextStore, InMemoryContextStore
+from backend.brain.fusion import MultimodalFusionEngine
 from backend.brain.intent_manager import IntentManager
+from backend.brain.orchestrator import BrainOrchestrator
 from backend.brain.planner import Planner
+from backend.brain.reasoning.provider import MockPlannerProvider, OllamaPlannerProvider
+from backend.brain.reasoning.service import ReasoningService
+from backend.brain.skills.builtin import DesktopAutomationSkill, MediaControlSkill
+from backend.brain.skills.registry import SkillRegistry
+from backend.brain.workflow import RetryPolicy, WorkflowEngine
 from backend.core.config.eye_config import EyeInteractionConfig
 from backend.core.config.settings import Settings
+from backend.core.events.bus import EventBus
 from backend.eye_tracking.action_engine import ActionEngine
 from backend.eye_tracking.blink_detection_service import BlinkDetectionService
 from backend.eye_tracking.calibration import EyeCalibrationService
@@ -24,10 +33,17 @@ from backend.eye_tracking.debug_visualization_service import GazeDebugVisualizat
 from backend.eye_tracking.gaze_service import EyeGazeService
 from backend.eye_tracking.gesture_interpreter_service import GestureInterpreterService
 from backend.memory.session_memory import SessionMemory
+from backend.platform.config_validator import ConfigurationValidator
+from backend.platform.diagnostics import DiagnosticsService
+from backend.platform.health import HealthMonitor, HealthState
+from backend.platform.lifecycle import LifecycleManager, RecoveryManager
+from backend.platform.metrics import MetricsRegistry, PerformanceMonitor
 from backend.utils.logger import get_logger
 from backend.voice.command_parser import IntentParserService
 from backend.voice.pipeline import VoiceCommandPipeline
+from backend.voice.preprocessor import AdaptiveGainControlFilter, AudioPreprocessor, PeakLimiterFilter
 from backend.voice.recognizer import ListenMode, VoiceRecognitionConfig, VoiceRecognitionService
+from backend.voice.telemetry import VoiceTelemetryService
 
 logger = get_logger(__name__)
 
@@ -53,6 +69,20 @@ class AppContainer:
     automation_dispatcher: AutomationDispatcher
     intent_parser: IntentParserService
     voice_pipeline: VoiceCommandPipeline
+    audio_preprocessor: AudioPreprocessor
+    event_bus: EventBus
+    voice_telemetry: VoiceTelemetryService
+    brain_orchestrator: BrainOrchestrator
+    context_store: ContextStore
+    fusion_engine: MultimodalFusionEngine
+    workflow_engine: WorkflowEngine
+    skill_registry: SkillRegistry
+    reasoning_service: ReasoningService
+    health_monitor: HealthMonitor
+    metrics_registry: MetricsRegistry
+    diagnostics_service: DiagnosticsService
+    lifecycle_manager: LifecycleManager
+    recovery_manager: RecoveryManager
     voice: VoiceRecognitionService
     intent_manager: IntentManager
     context_manager: ContextManager
@@ -96,13 +126,92 @@ def build_container(app_settings: Settings) -> AppContainer:
         debug_visualizer=gaze_debug_visualizer,
     )
 
+    event_bus = EventBus()
+    voice_telemetry = VoiceTelemetryService(
+        event_bus=event_bus,
+        enabled=app_settings.TELEMETRY_ENABLED,
+        capacity=app_settings.TELEMETRY_BUFFER_CAPACITY,
+    )
+
     desktop_controller = DesktopController()
     automation_dispatcher = AutomationDispatcher(desktop_controller)
     intent_parser = IntentParserService()
+
+    intent_manager = IntentManager()
+    context_store = InMemoryContextStore(
+        max_snapshots=app_settings.CONTEXT_STORE_MAX_SNAPSHOTS,
+        ttl_seconds=app_settings.CONTEXT_TTL_SECONDS,
+    )
+    context_manager = ContextManager(store=context_store)
+
+    workflow_engine = WorkflowEngine(
+        automation_dispatcher=automation_dispatcher,
+        event_bus=event_bus,
+        retry_policy=RetryPolicy(max_retries=app_settings.WORKFLOW_MAX_RETRIES),
+        enabled=app_settings.WORKFLOW_ENGINE_ENABLED,
+    )
+
+    skill_registry = SkillRegistry(
+        event_bus=event_bus,
+        strict_permissions=app_settings.STRICT_SKILL_PERMISSIONS,
+        enabled=app_settings.SKILL_FRAMEWORK_ENABLED,
+    )
+    skill_registry.register_skill(DesktopAutomationSkill(automation_dispatcher))
+    skill_registry.register_skill(MediaControlSkill(automation_dispatcher))
+
+    planner_provider = (
+        OllamaPlannerProvider(model_name=app_settings.LLM_MODEL, api_url=app_settings.LLM_API_URL)
+        if app_settings.LLM_PROVIDER == "ollama"
+        else MockPlannerProvider()
+    )
+
+    reasoning_service = ReasoningService(
+        provider=planner_provider,
+        skill_registry=skill_registry,
+        context_manager=context_manager,
+        event_bus=event_bus,
+        enabled=app_settings.REASONING_ENABLED,
+    )
+
+    brain_orchestrator = BrainOrchestrator(
+        intent_manager=intent_manager,
+        context_manager=context_manager,
+        automation_dispatcher=automation_dispatcher,
+        event_bus=event_bus,
+        workflow_engine=workflow_engine,
+        reasoning_service=reasoning_service,
+        enabled=app_settings.BRAIN_ORCHESTRATOR_ENABLED,
+    )
+
+    fusion_engine = MultimodalFusionEngine(
+        window_ms=app_settings.FUSION_TEMPORAL_WINDOW_MS,
+        min_confidence=app_settings.FUSION_MIN_CONFIDENCE,
+        event_bus=event_bus,
+        enabled=app_settings.FUSION_ENGINE_ENABLED,
+    )
+
     voice_pipeline = VoiceCommandPipeline(
         intent_parser=intent_parser,
         action_engine=action_engine,
         automation_dispatcher=automation_dispatcher,
+        event_bus=event_bus,
+        orchestrator=brain_orchestrator,
+        fusion_engine=fusion_engine,
+    )
+
+    audio_preprocessor = AudioPreprocessor(
+        filters=[
+            AdaptiveGainControlFilter(
+                target_rms=app_settings.AGC_TARGET_RMS,
+                min_gain=app_settings.AGC_MIN_GAIN,
+                max_gain=app_settings.AGC_MAX_GAIN,
+                enabled=app_settings.AGC_ENABLED,
+            ),
+            PeakLimiterFilter(
+                threshold=app_settings.PEAK_LIMITER_THRESHOLD,
+            ),
+        ],
+        enabled=app_settings.AUDIO_PREPROCESSOR_ENABLED,
     )
 
     default_listen_mode = _resolve_listen_mode(app_settings.VOICE_LISTEN_MODE)
@@ -111,9 +220,42 @@ def build_container(app_settings: Settings) -> AppContainer:
             model_size=app_settings.WHISPER_MODEL,
             sample_rate=app_settings.MIC_SAMPLE_RATE,
             listen_mode=default_listen_mode,
+            enable_agc=app_settings.AGC_ENABLED,
+            target_rms=app_settings.AGC_TARGET_RMS,
+            max_agc_gain=app_settings.AGC_MAX_GAIN,
+            preprocessor=audio_preprocessor,
+            event_bus=event_bus,
         ),
         on_transcript=voice_pipeline.handle_transcript,
     )
+
+    health_monitor = HealthMonitor(event_bus=event_bus, enabled=app_settings.RUNTIME_PLATFORM_ENABLED)
+    metrics_registry = MetricsRegistry(enabled=app_settings.METRICS_ENABLED)
+    performance_monitor = PerformanceMonitor(metrics_registry=metrics_registry, event_bus=event_bus)
+    diagnostics_service = DiagnosticsService(health_monitor=health_monitor, metrics_registry=metrics_registry)
+    lifecycle_manager = LifecycleManager(event_bus=event_bus)
+    recovery_manager = RecoveryManager(event_bus=event_bus)
+
+    # Register default health probes
+    health_monitor.register_probe("voice_pipeline", lambda: (HealthState.HEALTHY, {"active": True}))
+    health_monitor.register_probe(
+        "brain_orchestrator",
+        lambda: (HealthState.HEALTHY if brain_orchestrator.enabled else HealthState.DEGRADED, {"enabled": brain_orchestrator.enabled}),
+    )
+    health_monitor.register_probe(
+        "workflow_engine",
+        lambda: (HealthState.HEALTHY if workflow_engine.enabled else HealthState.DEGRADED, {"enabled": workflow_engine.enabled}),
+    )
+    health_monitor.register_probe(
+        "skill_registry",
+        lambda: (HealthState.HEALTHY if skill_registry.enabled else HealthState.DEGRADED, {"skills": len(skill_registry.discover_skills())}),
+    )
+    health_monitor.register_probe(
+        "reasoning_service",
+        lambda: (HealthState.HEALTHY if reasoning_service.enabled else HealthState.DEGRADED, {"enabled": reasoning_service.enabled}),
+    )
+
+    ConfigurationValidator.validate_settings(app_settings, event_bus=event_bus)
 
     return AppContainer(
         eye_interaction_config=eye_config,
@@ -129,9 +271,23 @@ def build_container(app_settings: Settings) -> AppContainer:
         automation_dispatcher=automation_dispatcher,
         intent_parser=intent_parser,
         voice_pipeline=voice_pipeline,
+        audio_preprocessor=audio_preprocessor,
+        event_bus=event_bus,
+        voice_telemetry=voice_telemetry,
+        brain_orchestrator=brain_orchestrator,
+        context_store=context_store,
+        fusion_engine=fusion_engine,
+        workflow_engine=workflow_engine,
+        skill_registry=skill_registry,
+        reasoning_service=reasoning_service,
+        health_monitor=health_monitor,
+        metrics_registry=metrics_registry,
+        diagnostics_service=diagnostics_service,
+        lifecycle_manager=lifecycle_manager,
+        recovery_manager=recovery_manager,
         voice=voice,
-        intent_manager=IntentManager(),
-        context_manager=ContextManager(),
+        intent_manager=intent_manager,
+        context_manager=context_manager,
         planner=Planner(),
         session_memory=SessionMemory(),
     )

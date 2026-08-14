@@ -44,6 +44,48 @@ class Settings(BaseSettings):
     WHISPER_MODEL: str = "base"
     MIC_SAMPLE_RATE: int = 16000
     VOICE_LISTEN_MODE: str = "continuous"
+    ENABLE_AGC: bool = True
+    AUDIO_PREPROCESSOR_ENABLED: bool = True
+    AGC_ENABLED: bool = True
+    AGC_TARGET_RMS: float = 0.04
+    AGC_MIN_GAIN: float = 1.0
+    AGC_MAX_GAIN: float = 40.0
+    PEAK_LIMITER_THRESHOLD: float = 1.0
+
+    # Telemetry & Events
+    TELEMETRY_ENABLED: bool = True
+    TELEMETRY_BUFFER_CAPACITY: int = 100
+
+    # Brain Orchestrator & Context
+    BRAIN_ORCHESTRATOR_ENABLED: bool = True
+    SAFETY_VALIDATION_ENABLED: bool = True
+    CONTEXT_STORE_MAX_SNAPSHOTS: int = 50
+    CONTEXT_TTL_SECONDS: float = 300.0
+
+    # Multimodal Fusion
+    FUSION_ENGINE_ENABLED: bool = True
+    FUSION_TEMPORAL_WINDOW_MS: float = 500.0
+    FUSION_MIN_CONFIDENCE: float = 0.5
+
+    # Task & Workflow Engine
+    WORKFLOW_ENGINE_ENABLED: bool = True
+    WORKFLOW_MAX_RETRIES: int = 2
+    WORKFLOW_STEP_TIMEOUT_SEC: float = 5.0
+
+    # Plugin & Skill Framework
+    SKILL_FRAMEWORK_ENABLED: bool = True
+    STRICT_SKILL_PERMISSIONS: bool = False
+
+    # AI Reasoning & Planning Layer
+    REASONING_ENABLED: bool = True
+    LLM_PROVIDER: str = "mock"
+    LLM_MODEL: str = "llama3:8b"
+    LLM_API_URL: str = "http://localhost:11434"
+
+    # Runtime Platform & Production Hardening Layer
+    RUNTIME_PLATFORM_ENABLED: bool = True
+    HEALTH_CHECK_INTERVAL_SEC: float = 10.0
+    METRICS_ENABLED: bool = True
 
     # API Server
     API_HOST: str = "127.0.0.1"

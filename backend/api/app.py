@@ -5,7 +5,31 @@ Creates and configures the FastAPI app with all routers and middleware.
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import camera, eye, health, voice
+from backend.api.routes import (
+    agent_routes,
+    camera,
+    dialogue_routes,
+    eye,
+    gaze_dataset_routes,
+    goal_routes,
+    health,
+    learning_routes,
+    memory_routes,
+    native_app_routes,
+    nlu_routes,
+    preview_routes,
+    recovery_routes,
+    runtime_routes,
+    streaming_routes,
+    uia_routes,
+    verification_routes,
+    vision_action_routes,
+    vision_routes,
+    voice,
+    wakeword_routes,
+    world_routes,
+    workspace_routes,
+)
 from backend.config.settings import settings
 from backend.core.di.container import AppContainer, build_container
 from backend.utils.logger import get_logger
@@ -35,6 +59,39 @@ def create_app() -> FastAPI:
     app.include_router(camera.router)
     app.include_router(eye.router, prefix="/eye")
     app.include_router(voice.router, prefix="/voice")
+    app.include_router(vision_routes.router, prefix="/api/v1")
+    app.include_router(memory_routes.router, prefix="/api/v1")
+    app.include_router(dialogue_routes.router, prefix="/api/v1")
+    app.include_router(workspace_routes.router, prefix="/api/v1")
+    app.include_router(goal_routes.router, prefix="/api/v1")
+    app.include_router(wakeword_routes.router, prefix="/api/v1")
+    app.include_router(vision_action_routes.router, prefix="/api/v1")
+    app.include_router(native_app_routes.router, prefix="/api/v1")
+    app.include_router(nlu_routes.router, prefix="/api/v1")
+    app.include_router(streaming_routes.router, prefix="/api/v1")
+    app.include_router(learning_routes.router, prefix="/api/v1")
+    app.include_router(agent_routes.router, prefix="/api/v1")
+    app.include_router(verification_routes.router, prefix="/api/v1")
+    app.include_router(uia_routes.router, prefix="/api/v1")
+    app.include_router(preview_routes.router, prefix="/api/v1")
+    app.include_router(recovery_routes.router, prefix="/api/v1")
+    app.include_router(world_routes.router, prefix="/api/v1")
+    app.include_router(runtime_routes.router, prefix="/api/v1")
+    app.include_router(gaze_dataset_routes.router, prefix="/api/v1")
+
+    @app.get("/api/v1/health")
+    async def get_health_status():
+        """Return runtime platform component health status and diagnostics."""
+        if hasattr(app.state, "diagnostics_service"):
+            return app.state.diagnostics_service.generate_snapshot()
+        return {"status": "ok"}
+
+    @app.get("/api/v1/metrics")
+    async def get_metrics_summary():
+        """Return operational metrics summary."""
+        if hasattr(app.state, "metrics_registry"):
+            return app.state.metrics_registry.get_metrics_summary()
+        return {}
 
     @app.on_event("startup")
     async def on_startup():
@@ -50,10 +107,14 @@ def create_app() -> FastAPI:
             settings.WHISPER_MODEL,
             settings.MIC_SAMPLE_RATE,
         )
+        if hasattr(app.state, "lifecycle_manager"):
+            app.state.lifecycle_manager.startup()
 
     @app.on_event("shutdown")
     async def on_shutdown():
         # Ensure the webcam is released even if the client never called /camera/stop.
+        if hasattr(app.state, "lifecycle_manager"):
+            app.state.lifecycle_manager.shutdown(reason="server_shutdown")
         app.state.voice.stop()
         app.state.camera.cleanup()
         logger.info("IRIS AI backend shut down cleanly.")
@@ -76,4 +137,18 @@ def _attach_container(app: FastAPI, container: AppContainer) -> None:
     app.state.automation_dispatcher = container.automation_dispatcher
     app.state.intent_parser = container.intent_parser
     app.state.voice_pipeline = container.voice_pipeline
+    app.state.audio_preprocessor = container.audio_preprocessor
+    app.state.event_bus = container.event_bus
+    app.state.voice_telemetry = container.voice_telemetry
+    app.state.brain_orchestrator = container.brain_orchestrator
+    app.state.context_store = container.context_store
+    app.state.fusion_engine = container.fusion_engine
+    app.state.workflow_engine = container.workflow_engine
+    app.state.skill_registry = container.skill_registry
+    app.state.reasoning_service = container.reasoning_service
+    app.state.health_monitor = container.health_monitor
+    app.state.metrics_registry = container.metrics_registry
+    app.state.diagnostics_service = container.diagnostics_service
+    app.state.lifecycle_manager = container.lifecycle_manager
+    app.state.recovery_manager = container.recovery_manager
     app.state.voice = container.voice
