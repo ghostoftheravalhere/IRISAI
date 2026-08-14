@@ -255,6 +255,31 @@ async def get_overlay_mode(request: Request) -> dict[str, str]:
     return {"mode": request.app.state.gaze_debug_visualizer.get_mode()}
 
 
+@router.get("/hud")
+async def get_gaze_hud_telemetry(request: Request) -> dict[str, object]:
+    """Return live gaze HUD overlay telemetry state."""
+    gaze_service = getattr(request.app.state, "eye_gaze", None)
+    gaze = gaze_service.get_latest_gaze() if gaze_service else None
+
+    if gaze is None:
+        return {
+            "gaze_x": 0.5,
+            "gaze_y": 0.5,
+            "confidence": 0.0,
+            "tracking_state": "lost",
+            "ptt_state": "idle",
+        }
+
+    state = "active" if gaze.confidence >= 0.45 else "low_confidence"
+    return {
+        "gaze_x": round(gaze.x, 4),
+        "gaze_y": round(gaze.y, 4),
+        "confidence": round(gaze.confidence, 4),
+        "tracking_state": state,
+        "ptt_state": "idle",
+    }
+
+
 @router.post("/overlay/mode", response_model=OverlayModeResponse)
 async def set_overlay_mode(request: Request, body: OverlayModeRequest) -> dict[str, str]:
     """Switch the camera overlay between normal demo and debug diagnostics."""
