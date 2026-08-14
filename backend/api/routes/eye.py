@@ -280,6 +280,32 @@ async def get_gaze_hud_telemetry(request: Request) -> dict[str, object]:
     }
 
 
+@router.get("/calibration/guidance")
+async def get_calibration_guidance(request: Request) -> dict[str, object]:
+    """Return real-time calibration posture, distance, and head-pose guidance state."""
+    camera = getattr(request.app.state, "camera", None)
+    eye_data = camera.get_latest_eye_data() if camera else None
+
+    from backend.eye_tracking.calibration_guidance import CalibrationGuidanceService
+    guidance_service = getattr(request.app.state, "calibration_guidance", None)
+    if guidance_service is None:
+        guidance_service = CalibrationGuidanceService()
+        setattr(request.app.state, "calibration_guidance", guidance_service)
+
+    state = guidance_service.evaluate_posture(eye_data)
+    return {
+        "status": state.status,
+        "message": state.message,
+        "face_distance": state.face_distance,
+        "is_stable": state.is_stable,
+        "confidence": state.confidence,
+        "inter_eye_distance": state.inter_eye_distance,
+        "midpoint_x": state.midpoint_x,
+        "midpoint_y": state.midpoint_y,
+        "depth_delta": state.depth_delta,
+    }
+
+
 @router.post("/overlay/mode", response_model=OverlayModeResponse)
 async def set_overlay_mode(request: Request, body: OverlayModeRequest) -> dict[str, str]:
     """Switch the camera overlay between normal demo and debug diagnostics."""

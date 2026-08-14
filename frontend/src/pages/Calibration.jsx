@@ -19,6 +19,7 @@ export default function Calibration() {
     capturing,
     cursorEnabled,
     error,
+    guidance,
     progress,
     progressPercent,
     progressText,
@@ -36,6 +37,9 @@ export default function Calibration() {
   const complete = progress.complete;
   const currentPoint = complete ? "Complete" : CALIBRATION_POINTS[activeIndex] ?? "Waiting";
   const quality = progress.quality;
+
+  const guidanceMessage = guidance?.message ?? "Center your face in front of camera";
+  const isGuidanceGood = guidance?.status === "good" && guidance?.is_stable;
 
   const qualityMessage = (() => {
     if (!quality) {
@@ -85,6 +89,12 @@ export default function Calibration() {
           <div>
             <span className={styles.statusLabel}>Tracking Status</span>
             <strong>{trackingStatus}</strong>
+          </div>
+          <div>
+            <span className={styles.statusLabel}>Posture Guidance</span>
+            <strong style={{ color: isGuidanceGood ? "#34d399" : "#fbbf24" }}>
+              {started ? guidanceMessage : "Ready"}
+            </strong>
           </div>
           <div>
             <span className={styles.statusLabel}>Calibration Status</span>

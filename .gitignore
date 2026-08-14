@@ -224,3 +224,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Temporary Audio & Architecture Exports
+*.wav
+M.txt
+iris_v4_general_user_flowchart.png
+iris_v4_technical_architecture_flowchart.png
