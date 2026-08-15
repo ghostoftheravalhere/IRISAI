@@ -22,8 +22,9 @@ class DesktopTool:
         action_engine: ActionEngine | None = None,
         desktop_controller: DesktopController | None = None,
     ) -> None:
-        self._action_engine = action_engine or ActionEngine()
-        self._desktop_controller = desktop_controller or DesktopController()
+        ctrl = desktop_controller or DesktopController()
+        self._action_engine = action_engine or ActionEngine(desktop_controller=ctrl)
+        self._desktop_controller = ctrl
 
     @property
     def descriptor(self) -> ToolDescriptor:
@@ -84,7 +85,8 @@ class DesktopTool:
             type_str = str(text or target or "")
             req = ActionRequest(action=CanonicalAction.TYPE_TEXT, text_payload=type_str)
             res = self._action_engine.execute(req)
-            return ToolResult(res.success, res.message)
+            err = None if res.success else ("PY_AUTOGUI_FAILSAFE" if "failsafe" in res.message.lower() else "INPUT_FAILURE")
+            return ToolResult(res.success, res.message, error_code=err)
 
         if action_str == "hotkey":
             if isinstance(keys, list):

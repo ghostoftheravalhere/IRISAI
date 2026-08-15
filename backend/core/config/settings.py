@@ -79,14 +79,29 @@ class Settings(BaseSettings):
 
     # AI Reasoning & Planning Layer
     REASONING_ENABLED: bool = True
+    AI_PLANNER_PROVIDER: str = "deterministic"
+    QWEN_MODEL_NAME: str = "qwen2.5-1.5b-instruct"
+    QWEN_MODEL_PATH: str = "backend/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
     LLM_PROVIDER: str = "mock"
     LLM_MODEL: str = "llama3:8b"
     LLM_API_URL: str = "http://localhost:11434"
+
+    # Interaction Dataset Collection
+    DATA_COLLECTION_ENABLED: bool = False
+    DATASET_STORAGE_DIR: str = "backend/dataset/raw"
+    TRAINING_DATASET_DIR: str = "backend/dataset/training_ready"
 
     # Runtime Platform & Production Hardening Layer
     RUNTIME_PLATFORM_ENABLED: bool = True
     HEALTH_CHECK_INTERVAL_SEC: float = 10.0
     METRICS_ENABLED: bool = True
+
+    # Personal Productivity Tools Layer
+    EMAIL_ACCOUNT: str | None = None
+    EMAIL_SERVER: str | None = None
+    CALENDAR_ACCOUNT: str | None = None
+    GITHUB_API_TOKEN: str | None = None
+    GITHUB_DEFAULT_REPO: str | None = None
 
     # API Server
     API_HOST: str = "127.0.0.1"

@@ -210,6 +210,9 @@ tempCodeRunnerFile.py
 .env
 backend/.venv/
 backend/iris_ai.db
+backend/models/*.gguf
+backend/dataset/raw/
+backend/dataset/training_ready/
 frontend/node_modules/
 frontend/dist/
 screenshots/

@@ -168,11 +168,19 @@ def build_container(app_settings: Settings) -> AppContainer:
     skill_registry.register_skill(DesktopAutomationSkill(automation_dispatcher))
     skill_registry.register_skill(MediaControlSkill(automation_dispatcher))
 
-    planner_provider = (
-        OllamaPlannerProvider(model_name=app_settings.LLM_MODEL, api_url=app_settings.LLM_API_URL)
-        if app_settings.LLM_PROVIDER == "ollama"
-        else MockPlannerProvider()
-    )
+    planner_provider_type = getattr(app_settings, "AI_PLANNER_PROVIDER", "deterministic").lower()
+    if planner_provider_type == "qwen":
+        from backend.brain.reasoning.provider import LocalNeuralPlannerProvider
+        planner_provider = LocalNeuralPlannerProvider(
+            model_name=getattr(app_settings, "QWEN_MODEL_NAME", "qwen2.5-1.5b-instruct"),
+            model_path=getattr(app_settings, "QWEN_MODEL_PATH", "backend/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"),
+        )
+    elif app_settings.LLM_PROVIDER == "ollama":
+        planner_provider = OllamaPlannerProvider(model_name=app_settings.LLM_MODEL, api_url=app_settings.LLM_API_URL)
+    elif planner_provider_type == "mock":
+        planner_provider = MockPlannerProvider()
+    else:
+        planner_provider = None
 
     reasoning_service = ReasoningService(
         provider=planner_provider,
@@ -320,7 +328,7 @@ def build_container(app_settings: Settings) -> AppContainer:
         voice=voice,
         intent_manager=intent_manager,
         context_manager=context_manager,
-        planner=Planner(),
+        planner=Planner(provider=planner_provider),
         session_memory=SessionMemory(),
         canonical_action_engine=canonical_action_engine,
         ambiguity_engine=ambiguity_engine,

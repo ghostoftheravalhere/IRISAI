@@ -458,6 +458,17 @@ class DesktopController:
             logger.exception("Voice automation hotkey failed: %s", "+".join(keys))
             return False
 
+    def _ensure_safe_cursor_position(self, pyautogui) -> None:
+        """Ensure mouse cursor is positioned away from screen corners to prevent PyAutoGUI fail-safe triggers."""
+        try:
+            cur_x, cur_y = pyautogui.position()
+            screen_w, screen_h = pyautogui.size()
+            if cur_x <= 5 or cur_y <= 5 or cur_x >= screen_w - 5 or cur_y >= screen_h - 5:
+                safe_x, safe_y = max(100, screen_w // 2), max(100, screen_h // 2)
+                pyautogui.moveTo(safe_x, safe_y)
+        except Exception:
+            pass
+
     def type_text(self, text: str) -> bool:
         """Type a text string into the currently focused window."""
         pyautogui = self._load_pyautogui()
@@ -465,6 +476,7 @@ class DesktopController:
             return False
 
         try:
+            self._ensure_safe_cursor_position(pyautogui)
             pyautogui.write(text, interval=0.01)
             return True
         except Exception:

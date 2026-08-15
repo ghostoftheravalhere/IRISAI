@@ -8,6 +8,7 @@ from backend.agent.policy_engine import PermissionLevel
 from backend.agent.task_state import TaskState
 from backend.agent.tool_registry import ToolDescriptor, ToolResult
 from backend.automation.action_engine import ActionEngine, ActionRequest, CanonicalAction
+from backend.automation.controller import DesktopController
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -16,8 +17,13 @@ logger = get_logger(__name__)
 class BrowserTool:
     """Agent Tool wrapping browser automation and tab navigation."""
 
-    def __init__(self, action_engine: ActionEngine | None = None) -> None:
-        self._action_engine = action_engine or ActionEngine()
+    def __init__(
+        self,
+        action_engine: ActionEngine | None = None,
+        desktop_controller: DesktopController | None = None,
+    ) -> None:
+        ctrl = desktop_controller or DesktopController()
+        self._action_engine = action_engine or ActionEngine(desktop_controller=ctrl)
 
     @property
     def descriptor(self) -> ToolDescriptor:
