@@ -54,11 +54,6 @@ class TranscriptNormalizer:
         """Data-driven normalization rules for Whisper substitutions."""
         return [
             NormalizationRule(
-                rule_id="OPEN_EDGE_SUBSTITUTION",
-                pattern=re.compile(r"\b(open|launch|start)\s+it\b", re.IGNORECASE),
-                replacement=r"\1 edge",
-            ),
-            NormalizationRule(
                 rule_id="OPEN_CHROME_CURL",
                 pattern=re.compile(r"\b(open|launch|start)\s+curl\b", re.IGNORECASE),
                 replacement=r"\1 chrome",

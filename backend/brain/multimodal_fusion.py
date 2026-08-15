@@ -110,9 +110,15 @@ class DeicticSpatialFusionRule:
         if not DEICTIC_PATTERN.search(raw_text):
             return None
 
+        # Non-spatial actions or fallbacks (e.g. "Copy this", "Close this", "Paste here") use referential context or current focus
+        if latest_voice.intent in ("COPY", "PASTE", "CLOSE_APPLICATION", "CLOSE_WINDOW", "MINIMIZE_WINDOW", "SELECT_ALL"):
+            return None
+
         # Resolve gaze spatial target
         target = self._spatial_resolver.resolve_spatial_target()
         if target is None:
+            if self._spatial_resolver._gaze_service is None:
+                return None
             logger.warning("DeicticSpatialFusionRule: Spatial target unavailable for '%s'", raw_text)
             return FusionResult(
                 unified_intent="TARGET_UNAVAILABLE",
@@ -152,12 +158,14 @@ class DeicticSpatialFusionRule:
     @staticmethod
     def _extract_action_verb(text: str) -> str:
         text_lower = text.lower()
+        if "right click" in text_lower:
+            return "RIGHT_CLICK"
+        if "double click" in text_lower:
+            return "DOUBLE_CLICK"
         if "type" in text_lower or "write" in text_lower:
             return "TYPE_TEXT"
         if "open" in text_lower:
             return "OPEN_APPLICATION"
-        if "double click" in text_lower:
-            return "DOUBLE_CLICK"
         if "select" in text_lower:
-            return "SELECT_ELEMENT"
+            return "START_SELECTING"
         return "PRIMARY_CLICK"

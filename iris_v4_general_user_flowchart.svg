@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 2700" width="1920" height="2700" style="background-color: #0d1117; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;">
+  <defs>
+    <!-- Card & Container Gradients -->
+    <linearGradient id="bg-header" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1f2937"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="bg-section" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#161b22"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
+    <linearGradient id="bg-action-card" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="bg-strat-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#065f46"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="bg-strat-2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9a3412"/>
+      <stop offset="100%" stop-color="#c2410c"/>
+    </linearGradient>
+    <linearGradient id="bg-strat-3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#374151"/>
+      <stop offset="100%" stop-color="#4b5563"/>
+    </linearGradient>
+    <linearGradient id="bg-decision" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7e22ce"/>
+      <stop offset="100%" stop-color="#6b21a8"/>
+    </linearGradient>
+
+    <!-- Marker Arrowheads -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#34d399"/>
+    </marker>
+    <marker id="arrow-red" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f43f5e"/>
+    </marker>
+    <marker id="arrow-purple" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c084fc"/>
+    </marker>
+  </defs>
+
+  <!-- TITLE HEADER PANEL -->
+  <rect x="40" y="40" width="1840" height="120" rx="16" fill="url(#bg-header)" stroke="#38bdf8" stroke-width="2"/>
+  <text x="960" y="85" text-anchor="middle" fill="#f8fafc" font-size="34" font-weight="800">IRIS AI V4 — Intelligent Voice-Controlled Desktop Assistant</text>
+  <text x="960" y="125" text-anchor="middle" fill="#38bdf8" font-size="20" font-weight="600">How IRIS Understands, Plans, Executes, Verifies and Adapts to User Commands</text>
+
+  <!-- SECTION 1: USER COMMAND & LISTENING -->
+  <rect x="40" y="180" width="1840" height="160" rx="16" fill="url(#bg-section)" stroke="#30363d" stroke-width="1.5"/>
+  <text x="70" y="212" fill="#38bdf8" font-size="16" font-weight="700">1 🎤 USER COMMAND &amp; LISTENING</text>
+
+  <rect x="80" y="230" width="600" height="90" rx="12" fill="#161b22" stroke="#38bdf8" stroke-width="2"/>
+  <text x="110" y="265" fill="#f0f6fc" font-size="20" font-weight="800">🎤 USER SPEAKS A COMMAND</text>
+  <text x="110" y="295" fill="#38bdf8" font-size="16" font-weight="600">Example: "Open Chrome and search for ChatGPT"</text>
+
+  <rect x="760" y="230" width="500" height="90" rx="12" fill="#161b22" stroke="#484f58" stroke-width="1.5"/>
+  <text x="790" y="265" fill="#f0f6fc" font-size="20" font-weight="800">👂 IRIS LISTENS</text>
+  <text x="790" y="295" fill="#8b949e" font-size="16">Captures the user's voice instantly and accurately</text>
+
+  <path d="M 680 275 L 760 275" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- SECTION 2: UNDERSTANDING -->
+  <rect x="40" y="360" width="1840" height="180" rx="16" fill="url(#bg-section)" stroke="#30363d" stroke-width="1.5"/>
+  <text x="70" y="392" fill="#38bdf8" font-size="16" font-weight="700">2 🧠 NATURAL LANGUAGE UNDERSTANDING</text>
+
+  <rect x="760" y="410" width="500" height="105" rx="12" fill="#161b22" stroke="#38bdf8" stroke-width="2"/>
+  <text x="790" y="445" fill="#f0f6fc" font-size="20" font-weight="800">🧠 IRIS UNDERSTANDS</text>
+  <text x="790" y="472" fill="#8b949e" font-size="15">Converts spoken request into an actionable instruction</text>
+  <text x="790" y="495" fill="#38bdf8" font-size="14" font-weight="600">Identifies: Target App (Chrome) &amp; Desired Action (Search)</text>
+
+  <path d="M 1010 320 L 1010 410" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- SECTION 3: COMPUTER CONTEXT AWARENESS (SIDE CONTAINER) -->
+  <rect x="40" y="560" width="620" height="340" rx="16" fill="url(#bg-section)" stroke="#a855f7" stroke-width="2"/>
+  <text x="70" y="595" fill="#c084fc" font-size="18" font-weight="800">🌎 IRIS CHECKS THE COMPUTER CONTEXT</text>
+
+  <rect x="70" y="615" width="560" height="260" rx="12" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+  <text x="95" y="648" fill="#f0f6fc" font-size="16" font-weight="700">Continuously observes current desktop state:</text>
+  <text x="95" y="680" fill="#c084fc" font-size="15" font-weight="600">• Which application is currently open?</text>
+  <text x="95" y="710" fill="#c084fc" font-size="15" font-weight="600">• Which window is active &amp; visible?</text>
+  <text x="95" y="740" fill="#c084fc" font-size="15" font-weight="600">• What website or document is on screen?</text>
+  <text x="95" y="770" fill="#c084fc" font-size="15" font-weight="600">• What text is selected or in clipboard?</text>
+  <text x="95" y="800" fill="#c084fc" font-size="15" font-weight="600">• What project or file is open in the editor?</text>
+  <text x="95" y="835" fill="#38bdf8" font-size="15" font-weight="800">Inferred User Activity: Coding / Browsing / Meeting / Idle</text>
+
+  <!-- Connection from Context to Understanding/Planning -->
+  <path d="M 660 730 L 760 730" stroke="#c084fc" stroke-width="2.5" stroke-dasharray="6" marker-end="url(#arrow-purple)"/>
+  <text x="670" y="715" fill="#c084fc" font-size="13" font-weight="700">Uses Computer Context</text>
+
+  <!-- SECTION 4: TASK PLANNING -->
+  <rect x="710" y="560" width="1170" height="340" rx="16" fill="url(#bg-section)" stroke="#30363d" stroke-width="1.5"/>
+  <text x="740" y="592" fill="#38bdf8" font-size="16" font-weight="700">4 📋 TASK STEP PLANNING</text>
+
+  <rect x="760" y="615" width="500" height="105" rx="12" fill="#161b22" stroke="#38bdf8" stroke-width="2"/>
+  <text x="790" y="650" fill="#f0f6fc" font-size="20" font-weight="800">📋 IRIS PLANS THE TASK</text>
+  <text x="790" y="680" fill="#8b949e" font-size="15">Breaks request into exact steps needed to complete it</text>
+  <text x="790" y="702" fill="#38bdf8" font-size="14" font-weight="600">Reuses already open windows to avoid redundant actions</text>
+
+  <path d="M 1010 515 L 1010 615" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- Example Step Plan Box -->
+  <rect x="760" y="735" width="1070" height="140" rx="12" fill="#161b22" stroke="#484f58" stroke-width="1.5"/>
+  <text x="790" y="765" fill="#f0f6fc" font-size="16" font-weight="700">Example Planned Execution Steps:</text>
+
+  <rect x="790" y="785" width="230" height="70" rx="8" fill="#0d1117" stroke="#38bdf8" stroke-width="1"/>
+  <text x="905" y="815" text-anchor="middle" fill="#f0f6fc" font-size="14" font-weight="700">Step 1: Open Chrome</text>
+  <text x="905" y="835" text-anchor="middle" fill="#8b949e" font-size="12">(or reuse open window)</text>
+
+  <rect x="1060" y="785" width="230" height="70" rx="8" fill="#0d1117" stroke="#38bdf8" stroke-width="1"/>
+  <text x="1175" y="815" text-anchor="middle" fill="#f0f6fc" font-size="14" font-weight="700">Step 2: Search ChatGPT</text>
+  <text x="1175" y="835" text-anchor="middle" fill="#8b949e" font-size="12">(type into search bar)</text>
+
+  <rect x="1330" y="785" width="230" height="70" rx="8" fill="#0d1117" stroke="#38bdf8" stroke-width="1"/>
+  <text x="1445" y="815" text-anchor="middle" fill="#f0f6fc" font-size="14" font-weight="700">Step 3: Wait for Page</text>
+  <text x="1445" y="835" text-anchor="middle" fill="#8b949e" font-size="12">(load verification)</text>
+
+  <rect x="1600" y="785" width="200" height="70" rx="8" fill="#0d1117" stroke="#34d399" stroke-width="1"/>
+  <text x="1700" y="815" text-anchor="middle" fill="#34d399" font-size="14" font-weight="700">Step 4: Report Done</text>
+  <text x="1700" y="835" text-anchor="middle" fill="#8b949e" font-size="12">(confirm result)</text>
+
+  <path d="M 1020 820 L 1060 820" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1290 820 L 1330 820" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1560 820 L 1600 820" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-green)"/>
+
+  <!-- SECTION 5: SAFETY CHECK -->
+  <rect x="40" y="920" width="1840" height="210" rx="16" fill="url(#bg-section)" stroke="#30363d" stroke-width="1.5"/>
+  <text x="70" y="952" fill="#38bdf8" font-size="16" font-weight="700">5 🛡️ SAFETY &amp; RISK CHECK</text>
+
+  <rect x="80" y="975" width="520" height="115" rx="12" fill="#161b22" stroke="#eab308" stroke-width="2"/>
+  <text x="110" y="1010" fill="#f0f6fc" font-size="20" font-weight="800">🛡️ SAFETY &amp; RISK CHECK</text>
+  <text x="110" y="1040" fill="#8b949e" font-size="15">IRIS checks what the task may change before performing it</text>
+  <text x="110" y="1065" fill="#eab308" font-size="14" font-weight="600">Prevents unintended file deletion or harmful changes</text>
+
+  <!-- Decision Diamond: Confirmation Needed? -->
+  <polygon points="850,970 1000,1032 850,1095 700,1032" fill="url(#bg-decision)" stroke="#c084fc" stroke-width="2"/>
+  <text x="850" y="1025" text-anchor="middle" fill="#ffffff" font-size="15" font-weight="800">Is Confirmation</text>
+  <text x="850" y="1048" text-anchor="middle" fill="#ffffff" font-size="15" font-weight="800">Required?</text>
+
+  <rect x="1100" y="975" width="400" height="115" rx="12" fill="#161b22" stroke="#f43f5e" stroke-width="2"/>
+  <text x="1130" y="1010" fill="#f43f5e" font-size="18" font-weight="800">👤 ASK USER FOR CONFIRMATION</text>
+  <text x="1130" y="1040" fill="#8b949e" font-size="15">"Proceed with deletion / system change?"</text>
+  <text x="1130" y="1068" fill="#34d399" font-size="14" font-weight="700">YES ➔ Continue  |  NO ➔ Stop safely</text>
+
+  <path d="M 600 1032 L 700 1032" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M 1000 1032 L 1100 1032" stroke="#f43f5e" stroke-width="3" marker-end="url(#arrow-red)"/>
+  <text x="1030" y="1020" fill="#f43f5e" font-size="14" font-weight="800">YES</text>
+
+  <!-- Path if NO confirmation needed -->
+  <path d="M 850 1095 L 850 1160 L 1010 1160 L 1010 1180" stroke="#34d399" stroke-width="3" marker-end="url(#arrow-green)"/>
+  <text x="860" y="1125" fill="#34d399" font-size="14" font-weight="800">NO CONFIRMATION NEEDED</text>
+
+  <!-- SECTION 6: PERFORMING THE TASK (HERO CONTAINER) -->
+  <rect x="40" y="1180" width="1840" height="420" rx="16" fill="url(#bg-section)" stroke="#38bdf8" stroke-width="2"/>
+  <text x="70" y="1215" fill="#38bdf8" font-size="18" font-weight="800">6 ⚙️ IRIS PERFORMS THE TASK</text>
+  <text x="450" y="1215" fill="#8b949e" font-size="15">IRIS uses the safest and most reliable available method first</text>
+
+  <!-- Strategy 1: Controls -->
+  <rect x="80" y="1240" width="1760" height="95" rx="12" fill="url(#bg-strat-1)" stroke="#10b981" stroke-width="2"/>
+  <text x="110" y="1275" fill="#ffffff" font-size="20" font-weight="800">1️⃣ UNDERSTAND THE APPLICATION'S CONTROLS (PRIMARY METHOD)</text>
+  <text x="110" y="1305" fill="#a7f3d0" font-size="16" font-weight="600">Interacts directly with native buttons, menus, input text fields and tabs for maximum speed and accuracy</text>
+
+  <!-- Strategy 2: See Screen -->
+  <rect x="80" y="1350" width="1760" height="95" rx="12" fill="url(#bg-strat-2)" stroke="#f97316" stroke-width="2"/>
+  <text x="110" y="1385" fill="#ffffff" font-size="20" font-weight="800">2️⃣ SEE THE SCREEN (SECONDARY METHOD)</text>
+  <text x="110" y="1415" fill="#ffedd5" font-size="16" font-weight="600">Scans screen text visually to locate buttons or text labels when application controls are not directly accessible</text>
+
+  <!-- Strategy 3: Control Computer -->
+  <rect x="80" y="1460" width="1760" height="95" rx="12" fill="url(#bg-strat-3)" stroke="#9ca3af" stroke-width="2"/>
+  <text x="110" y="1495" fill="#ffffff" font-size="20" font-weight="800">3️⃣ CONTROL THE COMPUTER DIRECTLY (FALLBACK METHOD)</text>
+  <text x="110" y="1525" fill="#e5e7eb" font-size="16" font-weight="600">Uses keyboard shortcuts, mouse clicks, and application process launching when visual controls are unavailable</text>
+
+  <!-- SECTION 7 & 8: VERIFICATION & SUCCESS PATH -->
+  <rect x="40" y="1620" width="1840" height="420" rx="16" fill="url(#bg-section)" stroke="#30363d" stroke-width="1.5"/>
+  <text x="70" y="1652" fill="#38bdf8" font-size="16" font-weight="700">7 &amp; 8 🔍 VERIFICATION &amp; SUCCESS PATH</text>
+
+  <rect x="80" y="1675" width="520" height="110" rx="12" fill="#161b22" stroke="#38bdf8" stroke-width="2"/>
+  <text x="110" y="1710" fill="#f0f6fc" font-size="20" font-weight="800">🔍 IRIS CHECKS THE RESULT</text>
+  <text x="110" y="1740" fill="#8b949e" font-size="15">IRIS does not simply assume the action worked.</text>
+  <text x="110" y="1765" fill="#38bdf8" font-size="14" font-weight="600">Verifies: Did Chrome open? Did the search page appear?</text>
+
+  <!-- Connect Execution to Verification -->
+  <path d="M 960 1555 L 960 1600 L 340 1600 L 340 1675" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- Decision Diamond: Did it work? -->
+  <polygon points="820,1670 960,1730 820,1790 680,1730" fill="url(#bg-decision)" stroke="#c084fc" stroke-width="2"/>
+  <text x="820" y="1725" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="800">DID IT WORK?</text>
+  <text x="820" y="1745" text-anchor="middle" fill="#34d399" font-size="14" font-weight="700">Check Outcome</text>
+
+  <path d="M 600 1730 L 680 1730" stroke="#38bdf8" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <!-- SUCCESS BRANCH -->
+  <rect x="1080" y="1675" width="400" height="110" rx="12" fill="#161b22" stroke="#34d399" stroke-width="2"/>
+  <text x="1110" y="1710" fill="#34d399" font-size="20" font-weight="800">✅ TASK COMPLETED</text>
+  <text x="1110" y="1740" fill="#8b949e" font-size="15">Command executed &amp; verified successfully</text>
+  <text x="1110" y="1765" fill="#34d399" font-size="14" font-weight="600">Chrome opened ➔ ChatGPT search loaded</text>
+
+  <path d="M 960 1730 L 1080 1730" stroke="#34d399" stroke-width="3.5" marker-end="url(#arrow-green)"/>
+  <text x="1000" y="1718" fill="#34d399" font-size="16" font-weight="800">YES</text>
+
+  <!-- SECTION 9: SELF-HEALING RECOVERY (FAILURE BRANCH) -->
+  <rect x="80" y="1815" width="1760" height="200" rx="12" fill="#161b22" stroke="#f43f5e" stroke-width="2"/>
+  <text x="110" y="1848" fill="#f43f5e" font-size="20" font-weight="800">🔧 IRIS TRIES TO RECOVER (SELF-HEALING)</text>
+  <text x="520" y="1848" fill="#8b949e" font-size="15">IRIS checks what changed and looks for another way to complete the task</text>
+
+  <path d="M 820 1790 L 820 1815" stroke="#f43f5e" stroke-width="3" marker-end="url(#arrow-red)"/>
+  <text x="835" y="1808" fill="#f43f5e" font-size="16" font-weight="800">NO</text>
+
+  <!-- Recovery Sub-steps -->
+  <rect x="110" y="1875" width="360" height="75" rx="8" fill="#0d1117" stroke="#484f58" stroke-width="1.5"/>
+  <text x="130" y="1905" fill="#f0f6fc" font-size="15" font-weight="700">👀 1. Check What Changed</text>
+  <text x="130" y="1930" fill="#8b949e" font-size="13">Detect moved buttons or popups</text>
+
+  <rect x="510" y="1875" width="380" height="75" rx="8" fill="#0d1117" stroke="#484f58" stroke-width="1.5"/>
+  <text x="530" y="1905" fill="#f0f6fc" font-size="15" font-weight="700">🔎 2. Find Alternative Method</text>
+  <text x="530" y="1930" fill="#8b949e" font-size="13">"Settings" ➔ "Preferences" / ⚙️ Icon</text>
+
+  <rect x="930" y="1875" width="360" height="75" rx="8" fill="#0d1117" stroke="#484f58" stroke-width="1.5"/>
+  <text x="950" y="1905" fill="#f0f6fc" font-size="15" font-weight="700">📋 3. Adjust the Plan</text>
+  <text x="950" y="1930" fill="#8b949e" font-size="13">Insert popup dismissal or shortcut step</text>
+
+  <!-- Decision: Did Recovery Work? -->
+  <polygon points="1460,1865 1590,1912 1460,1960 1330,1912" fill="url(#bg-decision)" stroke="#c084fc" stroke-width="2"/>
+  <text x="1460" y="1905" text-anchor="middle" fill="#ffffff" font-size="15" font-weight="800">Did Recovery</text>
+  <text x="1460" y="1925" text-anchor="middle" fill="#ffffff" font-size="15" font-weight="800">Work?</text>
+
+  <rect x="1620" y="1875" width="200" height="75" rx="8" fill="#0d1117" stroke="#f43f5e" stroke-width="1.5"/>
+  <text x="1720" y="1905" text-anchor="middle" fill="#f43f5e" font-size="14" font-weight="800">👤 Ask User</text>
+  <text x="1720" y="1930" text-anchor="middle" fill="#f43f5e" font-size="14" font-weight="800">For Help</text>
+
+  <path d="M 470 1912 L 510 1912" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 890 1912 L 930 1912" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1290 1912 L 1330 1912" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1590 1912 L 1620 1912" stroke="#f43f5e" stroke-width="2" marker-end="url(#arrow-red)"/>
+  <text x="1595" y="1900" fill="#f43f5e" font-size="12" font-weight="800">NO</text>
+
+  <!-- RETRY LOOP ARROW BACK TO EXECUTION -->
+  <path d="M 1460 1865 L 1460 1285 L 1840 1285" stroke="#34d399" stroke-width="3" stroke-dasharray="6" marker-end="url(#arrow-green)"/>
+  <text x="1470" y="1845" fill="#34d399" font-size="14" font-weight="800">YES (↺ Try Again with New Method)</text>
+
+  <!-- SECTION 10 & 11: MEMORY & FINAL OUTPUT -->
+  <rect x="40" y="2060" width="1840" height="420" rx="16" fill="url(#bg-section)" stroke="#30363d" stroke-width="1.5"/>
+  <text x="70" y="2092" fill="#38bdf8" font-size="16" font-weight="700">10 &amp; 11 🧠 LEARNING, MEMORY &amp; FINAL OUTPUT</text>
+
+  <rect x="80" y="2115" width="540" height="110" rx="12" fill="#161b22" stroke="#38bdf8" stroke-width="2"/>
+  <text x="110" y="2150" fill="#f0f6fc" font-size="20" font-weight="800">🧠 REMEMBER THE RESULT</text>
+  <text x="110" y="2180" fill="#8b949e" font-size="15">Saves successful actions &amp; learned control shortcuts</text>
+  <text x="110" y="2205" fill="#38bdf8" font-size="14" font-weight="600">Improves future speed and accuracy automatically</text>
+
+  <path d="M 1280 1785 L 1280 2080 L 350 2080 L 350 2115" stroke="#34d399" stroke-width="3" marker-end="url(#arrow-green)"/>
+
+  <!-- SIDE LEARNING LOOP BOX -->
+  <rect x="660" y="2115" width="560" height="110" rx="12" fill="#161b22" stroke="#a855f7" stroke-width="1.5"/>
+  <text x="690" y="2150" fill="#c084fc" font-size="18" font-weight="800">🧠 LEARNS FROM INTERACTIONS</text>
+  <text x="690" y="2178" fill="#8b949e" font-size="14">Successful actions + User preferences + Preferred apps</text>
+  <text x="690" y="2202" fill="#c084fc" font-size="14" font-weight="700">Suggestions are advisory (Always keeps user in control)</text>
+
+  <path d="M 620 2170 L 660 2170" stroke="#c084fc" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow-purple)"/>
+
+  <!-- FINAL OUTPUT CONTAINER -->
+  <rect x="80" y="2255" width="1760" height="190" rx="14" fill="#161b22" stroke="#34d399" stroke-width="2"/>
+  <text x="110" y="2292" fill="#34d399" font-size="22" font-weight="800">✨ IRIS COMPLETES THE REQUEST</text>
+
+  <rect x="110" y="2315" width="500" height="100" rx="10" fill="#0d1117" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="140" y="2350" fill="#f0f6fc" font-size="18" font-weight="800">🗣️ SPEAKS THE RESULT</text>
+  <text x="140" y="2380" fill="#8b949e" font-size="15">"Done. I opened Chrome and searched for ChatGPT."</text>
+
+  <rect x="650" y="2315" width="500" height="100" rx="10" fill="#0d1117" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="680" y="2350" fill="#f0f6fc" font-size="18" font-weight="800">🖥️ SHOWS RESULT ON SCREEN</text>
+  <text x="680" y="2380" fill="#8b949e" font-size="15">Updates live IRIS Desktop Interface &amp; HUD view</text>
+
+  <rect x="1190" y="2315" width="610" height="100" rx="10" fill="#0d1117" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1220" y="2350" fill="#f0f6fc" font-size="18" font-weight="800">🧠 REMEMBERS USEFUL PREFERENCES</text>
+  <text x="1220" y="2380" fill="#8b949e" font-size="15">Remembers browser &amp; search preferences for next time</text>
+
+  <path d="M 350 2225 L 350 2255" stroke="#34d399" stroke-width="3" marker-end="url(#arrow-green)"/>
+
+  <!-- EXAMPLE CORE PARADIGM SUMMARY AT BOTTOM -->
+  <rect x="40" y="2500" width="1840" height="150" rx="16" fill="#161b22" stroke="#38bdf8" stroke-width="2"/>
+  <text x="960" y="2540" text-anchor="middle" fill="#38bdf8" font-size="22" font-weight="800">IRIS CORE ASSISTANT PARADIGM</text>
+  <text x="960" y="2585" text-anchor="middle" fill="#f0f6fc" font-size="19" font-weight="700">LISTEN  ➔  UNDERSTAND  ➔  OBSERVE  ➔  PLAN  ➔  CHECK SAFETY  ➔  ACT  ➔  VERIFY  ➔  RECOVER IF NEEDED  ➔  LEARN  ➔  RESPOND</text>
+  <text x="960" y="2620" text-anchor="middle" fill="#8b949e" font-size="15">A complete, self-healing, context-aware artificial intelligence desktop operator</text>
+
+</svg>

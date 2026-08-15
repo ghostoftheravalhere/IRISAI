@@ -6,8 +6,13 @@ Run from the repo root:  python -m backend.main
 import sys
 import os
 
-# Allow running as `python main.py` from inside backend/
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+if getattr(sys, "frozen", False):
+    bundle_dir = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
+    if bundle_dir not in sys.path:
+        sys.path.insert(0, bundle_dir)
+else:
+    # Allow running as `python main.py` from inside backend/
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import uvicorn
 from backend.api.app import create_app
@@ -16,10 +21,11 @@ from backend.config.settings import settings
 app = create_app()
 
 if __name__ == "__main__":
+    is_frozen = getattr(sys, "frozen", False)
     uvicorn.run(
-        "backend.main:app",
+        app if is_frozen else "backend.main:app",
         host=settings.API_HOST,
         port=settings.API_PORT,
-        reload=settings.DEBUG,
+        reload=settings.DEBUG if not is_frozen else False,
         log_level="debug" if settings.DEBUG else "info",
     )

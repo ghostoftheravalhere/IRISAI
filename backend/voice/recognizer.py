@@ -13,9 +13,58 @@ from backend.utils.logger import get_logger
 from backend.voice.preprocessor import AdaptiveGainControlFilter, AudioPreprocessor, PeakLimiterFilter
 from backend.voice.telemetry import AudioCapturedEvent, TranscriptionCompletedEvent
 
+import os
+import sys
+from backend.core.config.settings import settings
+
 logger = get_logger(__name__)
 
 TranscriptHandler = Callable[[str], tuple[str, str]]
+
+
+def resolve_whisper_model_path(model_size_or_name: str = "base", explicit_path: str | None = None) -> str:
+    """
+    Resolves the Faster-Whisper model size string or local directory path for offline use.
+    Resolution order:
+    1. explicit_path if provided and exists
+    2. settings.VOICE_MODEL_PATH if set and exists
+    3. Bundled production resources: resources/models/whisper-base or resources/models/<model_size>
+    4. Fallback to model_size_or_name string for Hugging Face cache / dev mode
+    """
+    if explicit_path and os.path.exists(explicit_path):
+        return explicit_path
+
+    if settings.VOICE_MODEL_PATH and os.path.exists(settings.VOICE_MODEL_PATH):
+        return settings.VOICE_MODEL_PATH
+
+    search_dirs: list[str] = []
+
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(sys.executable)
+        meipass = getattr(sys, "_MEIPASS", exe_dir)
+        search_dirs.extend([
+            os.path.join(meipass, "resources", "models"),
+            os.path.join(exe_dir, "resources", "models"),
+            os.path.join(exe_dir, "..", "resources", "models"),
+        ])
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    search_dirs.append(os.path.join(repo_root, "resources", "models"))
+
+    candidate_names = [
+        f"whisper-{model_size_or_name}",
+        f"whisper-{model_size_or_name}-en",
+        model_size_or_name,
+    ]
+
+    for sdir in search_dirs:
+        for name in candidate_names:
+            candidate_path = os.path.join(sdir, name)
+            if os.path.isdir(candidate_path) and os.path.exists(os.path.join(candidate_path, "model.bin")):
+                logger.info("Resolved offline bundled Whisper model at: %s", candidate_path)
+                return candidate_path
+
+    return model_size_or_name
 
 
 class ListenMode(str, Enum):
@@ -35,6 +84,7 @@ class VoiceRecognitionConfig:
     """Voice recognition runtime configuration."""
 
     model_size: str = "base"
+    model_path: str | None = None
     sample_rate: int = 16000
     language: str = "en"
     device: str = "cpu"
@@ -500,8 +550,13 @@ class VoiceRecognitionService:
             raise RuntimeError("faster-whisper is not installed or could not be loaded") from exc
 
         try:
+            target_model_path = resolve_whisper_model_path(
+                model_size_or_name=self._config.model_size,
+                explicit_path=self._config.model_path,
+            )
+            logger.info("Loading Faster-Whisper model from: %s", target_model_path)
             model = WhisperModel(
-                self._config.model_size,
+                target_model_path,
                 device=self._config.device,
                 compute_type=self._config.compute_type,
             )

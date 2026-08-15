@@ -5,16 +5,16 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.agent.agent_runtime import AgentRuntime
-from backend.automation.dispatcher import AutomationDispatcher
-from backend.brain.workflow import TaskPlan, WorkflowEngine, WorkflowStep
+from backend.agent.agent_core import AgentCore
+from backend.automation.action_engine import ActionEngine
+from backend.automation.controller import DesktopController
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
 # Shared singleton instances
-_fake_dispatcher = AutomationDispatcher(None)
-_workflow_engine = WorkflowEngine(automation_dispatcher=_fake_dispatcher, enabled=True)
-_runtime = AgentRuntime(workflow_engine=_workflow_engine)
+_desktop_controller = DesktopController()
+_action_engine = ActionEngine(desktop_controller=_desktop_controller)
+_agent_core = AgentCore(action_engine=_action_engine)
 
 
 class AgentGoalRequest(BaseModel):
@@ -24,22 +24,18 @@ class AgentGoalRequest(BaseModel):
 @router.post("/run")
 def run_autonomous_agent(req: AgentGoalRequest):
     """Launch autonomous agent loop for a goal."""
-    plan = TaskPlan(
-        name=f"Autonomous Plan for {req.goal}",
-        steps=[WorkflowStep(intent="OPEN_APPLICATION", target="chrome")],
-    )
-    success = _runtime.run_agent_goal(req.goal, plan)
+    res = _agent_core.process_goal(req.goal)
     return {
-        "success": success,
+        "success": res.success,
         "goal": req.goal,
-        "phase": _runtime.phase.value,
+        "message": res.response,
     }
 
 
 @router.get("/status")
 def get_agent_status():
-    """Get active agent runtime status and loop phase."""
+    """Get active agent runtime status."""
     return {
-        "enabled": _runtime.enabled,
-        "phase": _runtime.phase.value,
+        "enabled": True,
+        "tools_registered": len(_agent_core._tool_registry.list_tools()),
     }

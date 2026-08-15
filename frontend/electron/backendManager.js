@@ -1,9 +1,12 @@
 /**
  * BackendManager
- * Manages Python FastAPI backend process for Electron runtime in development mode.
+ * Manages Python FastAPI backend process for Electron runtime in development & production packaged modes.
  * Features:
+ * - Development vs Packaged mode executable resolution (app.isPackaged check)
  * - Pre-spawn check (reuses existing IRIS backend if 127.0.0.1:8000 is healthy)
- * - Subprocess spawning using backend/.venv/Scripts/python.exe (Windows) / backend/.venv/bin/python (POSIX)
+ * - Subprocess spawning:
+ *     - Dev: backend/.venv/Scripts/python.exe main.py
+ *     - Packaged: process.resourcesPath/backend/iris_backend.exe
  * - Health check polling (GET http://127.0.0.1:8000/health, 200ms poll interval, 15s timeout)
  * - Status lifecycle tracking (starting, connecting, ready, error, stopped, restarting)
  * - Stdout / Stderr stream piping prefixed with [PYTHON BACKEND]
@@ -11,6 +14,7 @@
  * - Idempotent teardown protection against double-shutdown race conditions
  * - Safe process restart capability
  */
+const { app } = require("electron");
 const { spawn } = require("child_process");
 const http = require("http");
 const path = require("path");
@@ -30,12 +34,17 @@ class BackendManager {
     this.isStarting = false;
   }
 
+  isPackaged() {
+    return Boolean(app && app.isPackaged);
+  }
+
   getStatusState() {
     return {
       status: this.status,
       message: this.message,
       ownedByElectron: this.ownedByElectron,
       port: this.port,
+      isPackaged: this.isPackaged(),
     };
   }
 
@@ -52,10 +61,17 @@ class BackendManager {
   }
 
   /**
-   * Resolve Python executable path dynamically relative to __dirname.
+   * Resolve backend executable path dynamically for dev vs production packaged mode.
    */
-  getPythonExecutable() {
+  getBackendExecutable() {
     const isWin = process.platform === "win32";
+
+    if (this.isPackaged()) {
+      const execName = isWin ? "iris_backend.exe" : "iris_backend";
+      return path.join(process.resourcesPath, "backend", execName);
+    }
+
+    // Development mode
     const venvPython = isWin
       ? path.join(__dirname, "../../backend/.venv/Scripts/python.exe")
       : path.join(__dirname, "../../backend/.venv/bin/python");
@@ -67,6 +83,9 @@ class BackendManager {
    * Resolve backend working directory.
    */
   getBackendDir() {
+    if (this.isPackaged()) {
+      return path.join(process.resourcesPath, "backend");
+    }
     return path.resolve(__dirname, "../../backend");
   }
 
@@ -153,12 +172,14 @@ class BackendManager {
       }
 
       // 2. Spawn backend process
-      const pythonExec = this.getPythonExecutable();
+      const backendExec = this.getBackendExecutable();
       const backendDir = this.getBackendDir();
+      const isPkg = this.isPackaged();
+      const args = isPkg ? [] : ["main.py"];
 
-      console.log(`[ELECTRON] Spawning IRIS backend: ${pythonExec} main.py in ${backendDir}`);
+      console.log(`[ELECTRON] Spawning IRIS backend (${isPkg ? "PACKAGED" : "DEV"}): ${backendExec} ${args.join(" ")} in ${backendDir}`);
 
-      this.childProcess = spawn(pythonExec, ["main.py"], {
+      this.childProcess = spawn(backendExec, args, {
         cwd: backendDir,
         env: { ...process.env, PYTHONUNBUFFERED: "1" },
         stdio: ["ignore", "pipe", "pipe"],

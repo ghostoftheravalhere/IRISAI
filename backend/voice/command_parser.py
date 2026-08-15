@@ -17,6 +17,7 @@ class VoiceIntentType(str, Enum):
     """Supported voice automation intents."""
 
     OPEN_APPLICATION = "OPEN_APPLICATION"
+    OPEN_CHAT = "OPEN_CHAT"
     CLOSE_APPLICATION = "CLOSE_APPLICATION"
     BROWSER_SEARCH = "BROWSER_SEARCH"
     HOTKEY = "HOTKEY"
@@ -25,6 +26,12 @@ class VoiceIntentType(str, Enum):
     WAIT_FOR_WINDOW = "WAIT_FOR_WINDOW"
     ACTIVATE_WINDOW = "ACTIVATE_WINDOW"
     VERIFY_WINDOW_ACTIVE = "VERIFY_WINDOW_ACTIVE"
+    # Mouse & Selection Intents
+    PRIMARY_CLICK = "PRIMARY_CLICK"
+    RIGHT_CLICK = "RIGHT_CLICK"
+    DOUBLE_CLICK = "DOUBLE_CLICK"
+    START_SELECTING = "START_SELECTING"
+    STOP_SELECTING = "STOP_SELECTING"
     # Legacy aliases kept for dispatcher/tests compatibility.
     OPEN_CHROME = "OPEN_CHROME"
     OPEN_NOTEPAD = "OPEN_NOTEPAD"
@@ -65,7 +72,7 @@ class IntentParserService:
     _FUZZY_MIN_RATIO = 0.82
     _TARGET_FUZZY_MIN_RATIO = 0.75
 
-    _OPEN_VERBS = ("open", "launch", "start", "opened")
+    _OPEN_VERBS = ("open", "launch", "start", "opened", "run", "go to", "take me to", "navigate to", "switch to")
     _CLOSE_VERBS = ("close", "quit", "exit", "kill", "closed")
     _MINIMIZE_VERBS = ("minimize", "minimise")
 
@@ -81,6 +88,11 @@ class IntentParserService:
     }
 
     _PHRASE_COMMANDS: dict[VoiceIntentType, tuple[str, ...]] = {
+        VoiceIntentType.PRIMARY_CLICK: ("click", "left click", "click here", "primary click", "click this", "click it"),
+        VoiceIntentType.RIGHT_CLICK: ("right click", "rightclick", "context menu", "right click here", "right click it", "right click this"),
+        VoiceIntentType.DOUBLE_CLICK: ("double click", "doubleclick"),
+        VoiceIntentType.START_SELECTING: ("start selecting", "begin selection", "start selection", "start selecting text"),
+        VoiceIntentType.STOP_SELECTING: ("stop selecting", "end selection", "stop selection", "finish selecting"),
         VoiceIntentType.SCROLL_DOWN: ("scroll down", "go down", "move down", "scrolldown"),
         VoiceIntentType.SCROLL_UP: ("scroll up", "go up", "move up", "scrollup"),
         VoiceIntentType.VOLUME_UP: (
@@ -96,8 +108,8 @@ class IntentParserService:
             "quieter",
         ),
         VoiceIntentType.MUTE: ("mute", "mute volume", "mute sound", "silence", "unmute"),
-        VoiceIntentType.COPY: ("copy", "copy text", "copy selection", "copy that"),
-        VoiceIntentType.PASTE: ("paste", "paste text", "paste that"),
+        VoiceIntentType.COPY: ("copy", "copy text", "copy selection", "copy that", "copy it", "copy this", "copy the selected text"),
+        VoiceIntentType.PASTE: ("paste", "paste text", "paste that", "paste it", "paste here", "paste there"),
         VoiceIntentType.SELECT_ALL: ("select all", "select everything"),
         VoiceIntentType.TAKE_SCREENSHOT: (
             "take screenshot",
@@ -131,6 +143,26 @@ class IntentParserService:
             logger.info("- detectedIntent: %s", browser_search.intent.value)
             return browser_search
 
+        # Type / write / send text matching
+        if normalized.startswith(("type ", "write ", "say ", "send ")):
+            parts = text.split(maxsplit=1)
+            payload = parts[1] if len(parts) > 1 else ""
+            return VoiceIntent(
+                intent=VoiceIntentType.TYPE_TEXT,
+                text=text,
+                confidence=0.90,
+                query=payload,
+                params={"text": payload},
+            )
+
+        # 1. Exact phrase matching (prevents "start selecting" from matching verb "start")
+        for intent, phrases in self._PHRASE_COMMANDS.items():
+            if normalized in phrases:
+                logger.info("- matched rule: exact phrase")
+                logger.info("- detectedIntent: %s", intent.value)
+                return VoiceIntent(intent=intent, text=text, confidence=1.0)
+
+        # 2. Verb-first matching (open, close, minimize)
         verb_intent = self._parse_verb_first(normalized, text)
         if verb_intent is not None:
             logger.info(
@@ -142,12 +174,7 @@ class IntentParserService:
             logger.info("- detectedIntent: %s", verb_intent.intent.value)
             return verb_intent
 
-        for intent, phrases in self._PHRASE_COMMANDS.items():
-            if normalized in phrases:
-                logger.info("- matched rule: exact phrase")
-                logger.info("- detectedIntent: %s", intent.value)
-                return VoiceIntent(intent=intent, text=text, confidence=1.0)
-
+        # 3. Contained phrase matching
         for intent, phrases in self._PHRASE_COMMANDS.items():
             if any(self._contains_phrase(normalized, phrase) for phrase in phrases):
                 logger.info("- matched rule: contained phrase")
@@ -164,6 +191,14 @@ class IntentParserService:
         logger.info("- matched rule: none")
         logger.info("- detectedIntent: %s", VoiceIntentType.NO_INTENT.value)
         return VoiceIntent(intent=VoiceIntentType.NO_INTENT, text=text)
+
+    @staticmethod
+    def _clean_target_phrase(remainder: str) -> str:
+        """Strip possessives, determiners, and control/entity suffixes from generic target phrases."""
+        clean = remainder.strip()
+        clean = re.sub(r"^(my|the|a|an)\s+", "", clean, flags=re.IGNORECASE).strip()
+        clean = re.sub(r"\s+(chat|conversation|group|channel|workspace|window|app|tab|folder|document|file)$", "", clean, flags=re.IGNORECASE).strip()
+        return clean or remainder
 
     def _parse_verb_first(self, normalized: str, original: str) -> VoiceIntent | None:
         """Resolve open/close/minimize intents from the leading action verb."""
@@ -183,9 +218,13 @@ class IntentParserService:
             return None
 
         remainder = " ".join(tokens[1:]).strip()
-        target = self._resolve_target(remainder) if remainder else None
+        cleaned_rem = self._clean_target_phrase(remainder) if remainder else ""
+        target = self._resolve_target(cleaned_rem) if cleaned_rem else None
 
         if verb == "open":
+            is_chat = any(w in remainder.lower() for w in ("chat", "conversation"))
+            intent_type = VoiceIntentType.OPEN_CHAT if is_chat else VoiceIntentType.OPEN_APPLICATION
+
             if target == "chrome":
                 return VoiceIntent(
                     intent=VoiceIntentType.OPEN_CHROME,
@@ -202,7 +241,7 @@ class IntentParserService:
                 )
             if target is not None:
                 return VoiceIntent(
-                    intent=VoiceIntentType.OPEN_APPLICATION,
+                    intent=intent_type,
                     text=original,
                     confidence=0.9,
                     target=target,
@@ -259,7 +298,7 @@ class IntentParserService:
 
         if best_target is not None and best_ratio >= self._TARGET_FUZZY_MIN_RATIO:
             return best_target
-        return None
+        return remainder
 
     def _fuzzy_match_phrases(self, normalized: str, original: str) -> VoiceIntent | None:
         """Fuzzy-match only non open/close phrase commands (never cross verbs)."""
@@ -289,7 +328,8 @@ class IntentParserService:
     def _normalize(text: str) -> str:
         """Normalize speech text for stable rule matching."""
         normalized = text.lower().strip()
-        normalized = re.sub(r"\b(um|uh|please|okay|ok|hey|iris|can you|could you)\b", " ", normalized)
+        normalized = re.sub(r"\b(um|uh|please|okay|ok|hey|iris|can you|could you|i want to|i'd like to)\b", " ", normalized)
+        normalized = re.sub(r"\b(take me to|go to|navigate to|switch to)\b", "open", normalized)
         normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
         return re.sub(r"\s+", " ", normalized).strip()
 

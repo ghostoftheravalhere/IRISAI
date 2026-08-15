@@ -8,14 +8,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from backend.automation.action_engine import ActionEngine as CanonicalActionEngine
 from backend.automation.controller import DesktopController
 from backend.automation.dispatcher import AutomationDispatcher
+from backend.automation.selection_manager import SelectionManager
 from backend.brain.context_manager import ContextManager
 from backend.brain.context_store import ContextStore, InMemoryContextStore
+from backend.brain.dialogue_manager import DialogueManager
 from backend.brain.fusion import MultimodalFusionEngine
 from backend.brain.intent_manager import IntentManager
+from backend.agent.planner import Planner
 from backend.brain.orchestrator import BrainOrchestrator
-from backend.brain.planner import Planner
 from backend.brain.reasoning.provider import MockPlannerProvider, OllamaPlannerProvider
 from backend.brain.reasoning.service import ReasoningService
 from backend.brain.skills.builtin import DesktopAutomationSkill, MediaControlSkill
@@ -33,6 +36,7 @@ from backend.eye_tracking.debug_visualization_service import GazeDebugVisualizat
 from backend.eye_tracking.gaze_service import EyeGazeService
 from backend.eye_tracking.gesture_interpreter_service import GestureInterpreterService
 from backend.memory.session_memory import SessionMemory
+from backend.perception.ambiguity_engine import AmbiguityEngine
 from backend.platform.config_validator import ConfigurationValidator
 from backend.platform.diagnostics import DiagnosticsService
 from backend.platform.health import HealthMonitor, HealthState
@@ -88,6 +92,11 @@ class AppContainer:
     context_manager: ContextManager
     planner: Planner
     session_memory: SessionMemory
+    canonical_action_engine: CanonicalActionEngine
+    ambiguity_engine: AmbiguityEngine
+    dialogue_manager: DialogueManager
+    selection_manager: SelectionManager
+    agent_core: AgentCore
 
 
 def build_container(app_settings: Settings) -> AppContainer:
@@ -173,6 +182,21 @@ def build_container(app_settings: Settings) -> AppContainer:
         enabled=app_settings.REASONING_ENABLED,
     )
 
+    selection_manager = SelectionManager(desktop_controller=desktop_controller)
+    canonical_action_engine = CanonicalActionEngine(
+        desktop_controller=desktop_controller,
+        selection_manager=selection_manager,
+    )
+    ambiguity_engine = AmbiguityEngine()
+    dialogue_manager = DialogueManager(
+        action_engine=canonical_action_engine,
+        ambiguity_engine=ambiguity_engine,
+    )
+
+    from backend.agent.agent_core import AgentCore
+    agent_core = AgentCore(dialogue_manager=dialogue_manager, action_engine=canonical_action_engine)
+    dialogue_manager._agent_core = agent_core
+
     brain_orchestrator = BrainOrchestrator(
         intent_manager=intent_manager,
         context_manager=context_manager,
@@ -180,12 +204,25 @@ def build_container(app_settings: Settings) -> AppContainer:
         event_bus=event_bus,
         workflow_engine=workflow_engine,
         reasoning_service=reasoning_service,
+        dialogue_manager=dialogue_manager,
+        canonical_action_engine=canonical_action_engine,
+        agent_core=agent_core,
         enabled=app_settings.BRAIN_ORCHESTRATOR_ENABLED,
     )
 
+    from backend.brain.fusion import ConflictResolutionRule, GazeVoiceFusionRule, VoiceOnlyFusionRule
+    from backend.brain.multimodal_fusion import DeicticSpatialFusionRule, GazeGroundedSpatialResolver
+
+    spatial_resolver = GazeGroundedSpatialResolver(gaze_service=eye_gaze)
     fusion_engine = MultimodalFusionEngine(
         window_ms=app_settings.FUSION_TEMPORAL_WINDOW_MS,
         min_confidence=app_settings.FUSION_MIN_CONFIDENCE,
+        rules=[
+            DeicticSpatialFusionRule(spatial_resolver=spatial_resolver),
+            VoiceOnlyFusionRule(),
+            GazeVoiceFusionRule(),
+            ConflictResolutionRule(),
+        ],
         event_bus=event_bus,
         enabled=app_settings.FUSION_ENGINE_ENABLED,
     )
@@ -250,11 +287,6 @@ def build_container(app_settings: Settings) -> AppContainer:
         "skill_registry",
         lambda: (HealthState.HEALTHY if skill_registry.enabled else HealthState.DEGRADED, {"skills": len(skill_registry.discover_skills())}),
     )
-    health_monitor.register_probe(
-        "reasoning_service",
-        lambda: (HealthState.HEALTHY if reasoning_service.enabled else HealthState.DEGRADED, {"enabled": reasoning_service.enabled}),
-    )
-
     ConfigurationValidator.validate_settings(app_settings, event_bus=event_bus)
 
     return AppContainer(
@@ -290,6 +322,11 @@ def build_container(app_settings: Settings) -> AppContainer:
         context_manager=context_manager,
         planner=Planner(),
         session_memory=SessionMemory(),
+        canonical_action_engine=canonical_action_engine,
+        ambiguity_engine=ambiguity_engine,
+        dialogue_manager=dialogue_manager,
+        selection_manager=selection_manager,
+        agent_core=agent_core,
     )
 
 

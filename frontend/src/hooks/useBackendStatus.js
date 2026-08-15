@@ -4,7 +4,7 @@
  * Returns { online: boolean, version: string }
  */
 import { useState, useEffect } from "react";
-import api from "../services/api";
+import { IRISApiClient } from "../services/api_client";
 
 export function useBackendStatus(intervalMs = 5000) {
   const [state, setState] = useState({ online: false, version: null });
@@ -14,8 +14,12 @@ export function useBackendStatus(intervalMs = 5000) {
 
     const check = async () => {
       try {
-        const { data } = await api.get("/health");
-        if (!cancelled) setState({ online: true, version: data.version });
+        const data = await IRISApiClient.getHealth();
+        if (!cancelled && data && data.status !== "OFFLINE") {
+          setState({ online: true, version: data.version || "4.0.0" });
+        } else if (!cancelled) {
+          setState({ online: false, version: null });
+        }
       } catch {
         if (!cancelled) setState({ online: false, version: null });
       }

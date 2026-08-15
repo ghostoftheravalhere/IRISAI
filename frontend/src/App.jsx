@@ -4,7 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import Camera from "./pages/Camera";
 import Calibration from "./pages/Calibration";
 import Voice from "./pages/Voice";
-import api from "./services/api";
+import { IRISApiClient } from "./services/api_client";
 
 export default function App() {
   const [backendState, setBackendState] = useState({
@@ -38,8 +38,8 @@ export default function App() {
     let isMounted = true;
     const checkWebHealth = async () => {
       try {
-        const { data } = await api.get("/health");
-        if (isMounted && data && (data.status === "online" || data.status === "ok")) {
+        const data = await IRISApiClient.getHealth();
+        if (isMounted && data && data.status !== "OFFLINE") {
           setBackendState({
             status: "ready",
             message: "Backend connected",

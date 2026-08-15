@@ -43,10 +43,10 @@ class _FakeDesktop(DesktopController):
 
 def test_rule_open_edge_substitution():
     normalizer = TranscriptNormalizer()
-    assert normalizer.normalize("Open it") == "Open edge"
-    assert normalizer.normalize("Please open it") == "Please open edge"
-    assert normalizer.normalize("Launch it") == "Launch edge"
-    assert normalizer.normalize("Start it") == "Start edge"
+    assert normalizer.normalize("Open it") == "Open it"
+    assert normalizer.normalize("Please open it") == "Please open it"
+    assert normalizer.normalize("Launch it") == "Launch it"
+    assert normalizer.normalize("Start it") == "Start it"
 
 
 def test_rule_open_chrome_substitutions():

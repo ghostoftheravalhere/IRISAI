@@ -5,12 +5,15 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.dialogue.dialogue_manager import DialogueManager
+from backend.brain.dialogue_manager import DialogueManager
+from backend.automation.action_engine import ActionEngine
+from backend.automation.controller import DesktopController
 
 router = APIRouter(prefix="/dialogue", tags=["dialogue"])
 
 # Shared DialogueManager singleton instance
-_dialogue_manager = DialogueManager()
+_action_engine = ActionEngine(desktop_controller=DesktopController())
+_dialogue_manager = DialogueManager(action_engine=_action_engine)
 
 
 class UtteranceRequest(BaseModel):

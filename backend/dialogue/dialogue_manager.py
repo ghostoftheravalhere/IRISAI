@@ -1,4 +1,8 @@
-"""Central Dialogue Manager Coordinator Subsystem."""
+"""Central Dialogue Manager Coordinator Subsystem (DEPRECATED).
+
+DEPRECATED: Preferred authoritative DialogueManager is in backend.brain.dialogue_manager.
+This module is maintained solely for backward compatibility with legacy dialogue routes and unit tests.
+"""
 
 from __future__ import annotations
 

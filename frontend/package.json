@@ -8,9 +8,48 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && electron .",
     "build": "vite build",
+    "package:dir": "vite build && npx electron-builder --win dir",
+    "package:installer": "vite build && npx electron-builder --win nsis",
     "electron": "electron .",
     "preview": "vite preview",
     "lint": "eslint src --ext .js,.jsx"
+  },
+  "build": {
+    "appId": "com.irisai.desktop",
+    "productName": "IRIS AI",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist/iris_backend",
+        "to": "backend"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "IRIS AI",
+      "artifactName": "IRIS.AI.Setup.${version}.${ext}",
+      "uninstallDisplayName": "IRIS AI"
+    }
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -22,6 +61,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "concurrently": "^8.2.2",
     "electron": "^31.0.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.2",
     "vite": "^5.2.12",

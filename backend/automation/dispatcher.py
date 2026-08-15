@@ -1,4 +1,8 @@
-"""Dispatch parsed voice intents to desktop automation actions."""
+"""Dispatch parsed voice intents to desktop automation actions (DEPRECATED).
+
+DEPRECATED: Preferred authoritative action execution engine is backend.automation.action_engine.ActionEngine.
+This module is maintained for backward compatibility with legacy unit tests and API routes.
+"""
 
 from __future__ import annotations
 

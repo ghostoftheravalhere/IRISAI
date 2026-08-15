@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-from backend.agent.agent_loop import AgentLoop
-from backend.agent.agent_models import AgentLoopPhase
-from backend.agent.agent_runtime import AgentRuntime
 from backend.agent.observation_engine import ObservationEngine
 from backend.agent.recovery_policy import RecoveryPolicy
 from backend.agent.reflection_engine import ReflectionEngine
 from backend.agent.verification_engine import VerificationEngine
-from backend.automation.dispatcher import AutomationDispatcher
-from backend.brain.workflow import TaskPlan, WorkflowEngine, WorkflowStep
 
 
 class _FakeDesktopController:
@@ -74,13 +69,12 @@ def test_reflection_and_recovery_policies():
     assert recovery.handle_failure(4) == "AWAITING_HUMAN_APPROVAL"
 
 
-def test_agent_loop_and_runtime():
-    dispatcher = AutomationDispatcher(_FakeDesktopController())
-    workflow_engine = WorkflowEngine(automation_dispatcher=dispatcher, enabled=True)
+from backend.agent.agent_core import AgentCore
+from backend.automation.action_engine import ActionEngine
+from backend.automation.controller import DesktopController
 
-    runtime = AgentRuntime(workflow_engine=workflow_engine)
-    plan = TaskPlan(name="Autonomous Plan", steps=[WorkflowStep(intent="OPEN_APPLICATION", target="chrome")])
-
-    success = runtime.run_agent_goal("Prepare Workspace", plan)
-    assert success is True
-    assert runtime.phase == AgentLoopPhase.FINISHED
+def test_agent_core_runtime():
+    action_engine = ActionEngine(desktop_controller=DesktopController())
+    core = AgentCore(action_engine=action_engine)
+    res = core.process_goal("IRIS, open Notepad")
+    assert res.success is True

@@ -42,6 +42,7 @@ class Settings(BaseSettings):
 
     # Voice
     WHISPER_MODEL: str = "base"
+    VOICE_MODEL_PATH: str | None = None
     MIC_SAMPLE_RATE: int = 16000
     VOICE_LISTEN_MODE: str = "continuous"
     ENABLE_AGC: bool = True

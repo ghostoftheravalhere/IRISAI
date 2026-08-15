@@ -93,7 +93,13 @@ class VoiceCommandPipeline:
                     )
                 )
 
-            if voice_intent.intent == VoiceIntentType.NO_INTENT:
+            is_pending_dialogue = (
+                self._orchestrator is not None
+                and getattr(self._orchestrator, "_dialogue_manager", None) is not None
+                and getattr(self._orchestrator._dialogue_manager, "state", None) != "IDLE"
+            )
+
+            if voice_intent.intent == VoiceIntentType.NO_INTENT and not is_pending_dialogue and self._orchestrator is None:
                 logger.info("Pipeline:")
                 logger.info("- ActionEngine request: skipped (NO_INTENT)")
                 return VoicePipelineResult(
