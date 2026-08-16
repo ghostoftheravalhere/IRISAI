@@ -89,12 +89,12 @@ class IntentParserService:
 
     _PHRASE_COMMANDS: dict[VoiceIntentType, tuple[str, ...]] = {
         VoiceIntentType.PRIMARY_CLICK: ("click", "left click", "click here", "primary click", "click this", "click it"),
-        VoiceIntentType.RIGHT_CLICK: ("right click", "rightclick", "context menu", "right click here", "right click it", "right click this"),
-        VoiceIntentType.DOUBLE_CLICK: ("double click", "doubleclick"),
+        VoiceIntentType.RIGHT_CLICK: ("right click", "right-click", "do a right click", "rightclick", "context menu", "right click here", "right click it", "right click this"),
+        VoiceIntentType.DOUBLE_CLICK: ("double click", "double-click", "doubleclick", "do a double click"),
         VoiceIntentType.START_SELECTING: ("start selecting", "begin selection", "start selection", "start selecting text"),
         VoiceIntentType.STOP_SELECTING: ("stop selecting", "end selection", "stop selection", "finish selecting"),
-        VoiceIntentType.SCROLL_DOWN: ("scroll down", "go down", "move down", "scrolldown"),
-        VoiceIntentType.SCROLL_UP: ("scroll up", "go up", "move up", "scrollup"),
+        VoiceIntentType.SCROLL_DOWN: ("scroll down", "scroll downward", "go down", "move down", "scrolldown"),
+        VoiceIntentType.SCROLL_UP: ("scroll up", "scroll upward", "go up", "move up", "scrollup"),
         VoiceIntentType.VOLUME_UP: (
             "volume up",
             "increase volume",

@@ -77,3 +77,52 @@ class ToolExecutor:
             err_msg = f"Tool '{desc.name}' failed with unhandled exception: {exc}"
             logger.exception(err_msg)
             return ToolResult(False, err_msg, error_code="EXECUTION_EXCEPTION"), eval_res
+
+    def execute_tools_parallel(
+        self,
+        tool_calls: list[tuple[str, dict[str, Any]]],
+        task_state: TaskState | None = None,
+        skip_confirmation: bool = False,
+    ) -> list[tuple[ToolResult, PolicyEvaluationResult]]:
+        """Execute multiple independent SAFE tools concurrently while preserving order and isolation."""
+        if not tool_calls:
+            return []
+
+        if len(tool_calls) == 1:
+            tool_name, params = tool_calls[0]
+            return [self.execute_tool(tool_name, params, task_state=task_state, skip_confirmation=skip_confirmation)]
+
+        logger.info("Executing %d independent tools in parallel", len(tool_calls))
+        results: list[tuple[ToolResult, PolicyEvaluationResult] | None] = [None] * len(tool_calls)
+
+        def _worker(idx: int, t_name: str, t_params: dict[str, Any]):
+            try:
+                res = self.execute_tool(t_name, t_params, task_state=task_state, skip_confirmation=skip_confirmation)
+                return idx, res
+            except Exception as exc:
+                logger.exception("Parallel worker for tool '%s' failed: %s", t_name, exc)
+                err_res = ToolResult(False, f"Tool '{t_name}' unhandled exception: {exc}", error_code="PARALLEL_EXECUTION_ERROR")
+                eval_res = PolicyEvaluationResult(allowed=True, permission_level=None, requires_user_confirmation=False, reason="Exception")
+                return idx, (err_res, eval_res)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(tool_calls), 8)) as pool:
+            futures = [pool.submit(_worker, i, name, params) for i, (name, params) in enumerate(tool_calls)]
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    idx, res = future.result()
+                    results[idx] = res
+                except Exception as exc:
+                    logger.error("Error retrieving parallel future result: %s", exc)
+
+        final_results: list[tuple[ToolResult, PolicyEvaluationResult]] = []
+        for i, res in enumerate(results):
+            if res is not None:
+                final_results.append(res)
+            else:
+                t_name, _ = tool_calls[i]
+                final_results.append((
+                    ToolResult(False, f"Tool '{t_name}' parallel execution failed", error_code="PARALLEL_FAILED"),
+                    PolicyEvaluationResult(allowed=False, permission_level=None, requires_user_confirmation=False, reason="Unassigned result"),
+                ))
+
+        return final_results

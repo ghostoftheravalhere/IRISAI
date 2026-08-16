@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import (
     agent_routes,
+    auth_routes,
     camera,
     dialogue_routes,
     eye,
@@ -112,6 +113,8 @@ def create_app() -> FastAPI:
     app.include_router(world_routes.router, prefix="/api/v1")
     app.include_router(runtime_routes.router, prefix="/api/v1")
     app.include_router(gaze_dataset_routes.router, prefix="/api/v1")
+    app.include_router(auth_routes.router)
+    app.include_router(auth_routes.github_router)
 
     @app.get("/api/v1/health")
     async def get_health_status():

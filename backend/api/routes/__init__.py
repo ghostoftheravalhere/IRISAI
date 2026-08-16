@@ -5,3 +5,6 @@
 # voice.py       → Prit
 # ai.py          → Meet
 # automation.py  → Mehil
+# auth_routes.py → Google OAuth
+
+from backend.api.routes import auth_routes

@@ -8,15 +8,19 @@ from typing import Any
 
 from backend.agent.dataset.collector import InteractionDatasetCollector
 from backend.agent.planner import Planner
-from backend.agent.policy_engine import PolicyEngine
+from backend.agent.policy_engine import PermissionLevel, PolicyEngine
 from backend.agent.response_generator import ResponseGenerator
 from backend.agent.task_state import PlanStep, TaskState, TaskStatus
 from backend.agent.tool_executor import ToolExecutor
 from backend.agent.tool_registry import Tool, ToolRegistry, ToolResult
 from backend.agent.tools.browser_tool import BrowserTool
+from backend.agent.tools.calendar_tool import CalendarTool
 from backend.agent.tools.desktop_tool import DesktopTool
+from backend.agent.tools.email_tool import EmailTool
 from backend.agent.tools.filesystem_tool import FilesystemTool
 from backend.agent.tools.git_tool import GitTool
+from backend.agent.tools.github_tool import GitHubTool
+from backend.agent.tools.identity_tool import IdentityTool
 from backend.agent.tools.web_search_tool import WebSearchTool
 from backend.automation.action_engine import ActionEngine
 from backend.brain.dialogue_manager import DialogueManager
@@ -76,6 +80,7 @@ class AgentCore:
         et = EmailTool()
         ct = CalendarTool()
         ght = GitHubTool()
+        idt = IdentityTool()
 
         self._registry.register_tool(dt)
         self._registry.register_tool(ft)
@@ -85,6 +90,7 @@ class AgentCore:
         self._registry.register_tool(et)
         self._registry.register_tool(ct)
         self._registry.register_tool(ght)
+        self._registry.register_tool(idt)
 
     def register_custom_tool(self, tool: Tool) -> bool:
         """Register a custom tool capability."""
@@ -142,18 +148,29 @@ class AgentCore:
             logger.info("Generated plan with %d steps for goal '%s'", len(plan.steps), goal)
 
             # 4. Multi-step execution loop
-            while task_state.current_step_index < len(plan.steps):
-                step = plan.steps[task_state.current_step_index]
-                step.status = "IN_PROGRESS"
-                logger.info("Executing plan step %d/%d: '%s' (tool=%s)", step.step_id, len(plan.steps), step.description, step.tool_name)
-
-                # Execute step via ToolExecutor
-                result, eval_res = self._executor.execute_tool(
-                    step.tool_name,
-                    step.params,
-                    task_state=task_state,
-                    skip_confirmation=skip_confirmation,
+            remaining_steps = plan.steps[task_state.current_step_index :]
+            if len(remaining_steps) > 1 and all(self._is_safe_independent_step(s) for s in remaining_steps):
+                logger.info("Executing %d independent SAFE read-only plan steps in parallel", len(remaining_steps))
+                tool_calls = [(s.tool_name, s.params) for s in remaining_steps]
+                parallel_results = self._executor.execute_tools_parallel(
+                    tool_calls, task_state=task_state, skip_confirmation=skip_confirmation
                 )
+                for step, (result, eval_res) in zip(remaining_steps, parallel_results):
+                    step.status = "COMPLETED" if result.success else "FAILED"
+                    task_state.advance_step(step, result)
+            else:
+                while task_state.current_step_index < len(plan.steps):
+                    step = plan.steps[task_state.current_step_index]
+                    step.status = "IN_PROGRESS"
+                    logger.info("Executing plan step %d/%d: '%s' (tool=%s)", step.step_id, len(plan.steps), step.description, step.tool_name)
+
+                    # Execute step via ToolExecutor
+                    result, eval_res = self._executor.execute_tool(
+                        step.tool_name,
+                        step.params,
+                        task_state=task_state,
+                        skip_confirmation=skip_confirmation,
+                    )
 
                 # Check policy evaluation
                 if eval_res.requires_user_confirmation and result.error_code == "CONFIRMATION_REQUIRED":

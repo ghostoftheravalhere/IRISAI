@@ -9,6 +9,7 @@ from backend.agent.task_state import TaskState
 from backend.agent.tool_registry import ToolDescriptor, ToolResult
 from backend.automation.action_engine import ActionEngine, ActionRequest, CanonicalAction
 from backend.automation.controller import DesktopController
+from backend.perception.screen_grounding_engine import screen_grounding_engine
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -58,35 +59,35 @@ class DesktopTool:
             if task_state:
                 task_state.active_application = app_name
                 task_state.last_resolved_target = app_name
-            return ToolResult(res.success, res.message)
+            return ToolResult(res.success, res.message, data={"canonical_action": "OPEN_APPLICATION", "target": app_name})
 
         if action_str == "click":
             x = params.get("x")
             y = params.get("y")
             req = ActionRequest(action=CanonicalAction.CLICK, target_phrase=str(target or ""), target_x=x, target_y=y)
             res = self._action_engine.execute(req)
-            return ToolResult(res.success, res.message)
+            return ToolResult(res.success, res.message, data={"canonical_action": "PRIMARY_CLICK"})
 
         if action_str == "right_click":
             x = params.get("x")
             y = params.get("y")
             req = ActionRequest(action=CanonicalAction.RIGHT_CLICK, target_phrase=str(target or ""), target_x=x, target_y=y)
             res = self._action_engine.execute(req)
-            return ToolResult(res.success, res.message)
+            return ToolResult(res.success, res.message, data={"canonical_action": "RIGHT_CLICK"})
 
         if action_str == "double_click":
             x = params.get("x")
             y = params.get("y")
             req = ActionRequest(action=CanonicalAction.DOUBLE_CLICK, target_phrase=str(target or ""), target_x=x, target_y=y)
             res = self._action_engine.execute(req)
-            return ToolResult(res.success, res.message)
+            return ToolResult(res.success, res.message, data={"canonical_action": "DOUBLE_CLICK"})
 
         if action_str == "type_text" or action_str == "type":
             type_str = str(text or target or "")
             req = ActionRequest(action=CanonicalAction.TYPE_TEXT, text_payload=type_str)
             res = self._action_engine.execute(req)
             err = None if res.success else ("PY_AUTOGUI_FAILSAFE" if "failsafe" in res.message.lower() else "INPUT_FAILURE")
-            return ToolResult(res.success, res.message, error_code=err)
+            return ToolResult(res.success, res.message, error_code=err, data={"canonical_action": "TYPE_TEXT", "text": type_str})
 
         if action_str == "hotkey":
             if isinstance(keys, list):
@@ -96,14 +97,69 @@ class DesktopTool:
             res = self._action_engine.execute(req)
             return ToolResult(res.success, res.message)
 
+        if action_str == "copy":
+            req = ActionRequest(action=CanonicalAction.COPY)
+            res = self._action_engine.execute(req)
+            return ToolResult(res.success, res.message, data={"canonical_action": "COPY"})
+
+        if action_str == "paste":
+            req = ActionRequest(action=CanonicalAction.PASTE)
+            res = self._action_engine.execute(req)
+            return ToolResult(res.success, res.message, data={"canonical_action": "PASTE"})
+
+        if action_str == "scroll_down":
+            clicks = params.get("clicks", -5)
+            req = ActionRequest(action=CanonicalAction.SCROLL_DOWN, params={"clicks": clicks})
+            res = self._action_engine.execute(req)
+            return ToolResult(res.success, res.message, data={"canonical_action": "SCROLL_DOWN"})
+
+        if action_str == "scroll_up":
+            clicks = params.get("clicks", 5)
+            req = ActionRequest(action=CanonicalAction.SCROLL_UP, params={"clicks": clicks})
+            res = self._action_engine.execute(req)
+            return ToolResult(res.success, res.message, data={"canonical_action": "SCROLL_UP"})
+
+        if action_str == "find_element":
+            target_query = str(target or params.get("query") or "").strip()
+            res = screen_grounding_engine.ground_query(target_query)
+            if not res.success:
+                err = res.error_code or "NOT_FOUND"
+                return ToolResult(False, res.clarification_message or f"Could not find element '{target_query}'", error_code=err)
+            return ToolResult(True, f"Found '{res.target.name}' ({res.target.role}) at center {res.target.center}", data=res.target.to_safe_dict())
+
+        if action_str == "click_element" or action_str == "click_grounded":
+            target_query = str(target or params.get("query") or "").strip()
+            res = screen_grounding_engine.ground_query(target_query)
+            if not res.success:
+                err = res.error_code or "NOT_FOUND"
+                return ToolResult(False, res.clarification_message or f"Could not find element '{target_query}'", error_code=err)
+            req = ActionRequest(action=CanonicalAction.CLICK, target_phrase=res.target.name, target_x=res.target.center[0], target_y=res.target.center[1])
+            act_res = self._action_engine.execute(req)
+            return ToolResult(act_res.success, act_res.message, data={"canonical_action": "PRIMARY_CLICK", "target": res.target.to_safe_dict()})
+
+        if action_str == "spatial_click":
+            deictic_term = str(target or "this").strip()
+            res = screen_grounding_engine.ground_query(deictic_term)
+            if not res.success:
+                err = res.error_code or "SPATIAL_FAILED"
+                return ToolResult(False, res.clarification_message or "Spatial resolution failed", error_code=err)
+            req = ActionRequest(action=CanonicalAction.CLICK, target_phrase=res.target.name, target_x=res.target.center[0], target_y=res.target.center[1])
+            act_res = self._action_engine.execute(req)
+            return ToolResult(act_res.success, act_res.message, data={"canonical_action": "PRIMARY_CLICK", "target": res.target.to_safe_dict()})
+
+        if action_str == "query_visible_elements" or action_str == "visible_elements":
+            elements = screen_grounding_engine.extract_screen_elements()
+            names = [f"'{e.name}' ({e.role})" for e in elements[:10]]
+            return ToolResult(True, f"Visible elements on screen: {', '.join(names)}", data={"elements": [e.to_safe_dict() for e in elements]})
+
         if action_str == "close_window" or action_str == "close":
             req = ActionRequest(action=CanonicalAction.CLOSE_WINDOW, target_phrase=str(target or ""))
             res = self._action_engine.execute(req)
-            return ToolResult(res.success, res.message)
+            return ToolResult(res.success, res.message, data={"canonical_action": "CLOSE_WINDOW"})
 
         if action_str == "minimize_window" or action_str == "minimize":
             req = ActionRequest(action=CanonicalAction.MINIMIZE_WINDOW)
             res = self._action_engine.execute(req)
-            return ToolResult(res.success, res.message)
+            return ToolResult(res.success, res.message, data={"canonical_action": "MINIMIZE_WINDOW"})
 
         return ToolResult(False, f"Unsupported desktop action '{action_str}'")

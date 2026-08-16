@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     GITHUB_API_TOKEN: str | None = None
     GITHUB_DEFAULT_REPO: str | None = None
 
+    # Google OAuth 2.0 Integration
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/auth/google/callback"
+    GOOGLE_CLIENT_SECRET_FILE: str = "backend/config/google_client_secret.json"
+
     # API Server
     API_HOST: str = "127.0.0.1"
     API_PORT: int = 8000

@@ -10,6 +10,7 @@ import urllib.request
 from backend.agent.policy_engine import PermissionLevel
 from backend.agent.task_state import TaskState
 from backend.agent.tool_registry import ToolDescriptor, ToolResult
+from backend.auth.github_auth_service import github_auth_service
 from backend.core.config.settings import settings
 from backend.utils.logger import get_logger
 
@@ -20,18 +21,8 @@ class GitHubTool:
     """Read-Only Remote GitHub API Integration Tool for IRIS AI."""
 
     def __init__(self, token: str | None = None, default_repo: str | None = None) -> None:
-        self._token = (
-            token
-            or getattr(settings, "GITHUB_API_TOKEN", None)
-            or os.getenv("GITHUB_TOKEN")
-            or os.getenv("IRIS_GITHUB_TOKEN")
-        )
-        self._default_repo = (
-            default_repo
-            or getattr(settings, "GITHUB_DEFAULT_REPO", None)
-            or os.getenv("IRIS_GITHUB_REPO")
-            or "ghostoftheravalhere/IRISAI"
-        )
+        self._token = token
+        self._default_repo = default_repo
 
     @property
     def descriptor(self) -> ToolDescriptor:
@@ -51,25 +42,39 @@ class GitHubTool:
 
     def is_configured(self) -> bool:
         """Check if GitHub API token is configured."""
-        return bool(self._token)
+        return github_auth_service.get_status() == "GitHub connected" or bool(self._token)
+
+    def _get_active_token(self) -> str | None:
+        """Get active fine-grained GitHub access token."""
+        return self._token or github_auth_service.get_token()
+
+    def _get_active_repo(self, param_repo: str | None) -> str:
+        """Get active target repository in owner/repo format."""
+        if param_repo and param_repo.strip():
+            return param_repo.strip()
+        if self._default_repo:
+            return self._default_repo
+        return github_auth_service.get_default_repo()
 
     def _fetch_github_api(self, endpoint: str) -> tuple[bool, Any, str]:
         """Perform authenticated read-only HTTP GET request to GitHub REST API."""
-        if not self._token:
+        token = self._get_active_token()
+        if not token:
             return False, None, "GitHub account or token is not configured yet."
 
         url = f"https://api.github.com/{endpoint.lstrip('/')}"
+        auth_header = f"Bearer {token}" if token.startswith("github_pat_") else f"token {token}"
         req = urllib.request.Request(
             url,
             headers={
-                "Authorization": f"token {self._token}",
+                "Authorization": auth_header,
                 "User-Agent": "IRIS-AI-Agent/4.0",
                 "Accept": "application/vnd.github.v3+json",
             },
         )
         try:
             with urllib.request.urlopen(req, timeout=5) as response:
-                if response.status == 200:
+                if response.status in (200, 201):
                     data = json.loads(response.read().decode("utf-8"))
                     return True, data, "Success"
                 return False, None, f"GitHub API returned status {response.status}"
@@ -80,7 +85,8 @@ class GitHubTool:
     def execute(self, params: dict[str, Any], task_state: TaskState | None = None) -> ToolResult:
         """Execute read-only GitHub operation."""
         action = str(params.get("action") or "get_repository_info").lower()
-        repo = str(params.get("repo") or self._default_repo).strip()
+        param_repo = str(params.get("repo") or "").strip()
+        repo = self._get_active_repo(param_repo)
         count = int(params.get("count") or 5)
         state_filter = str(params.get("state") or "open").lower()
 

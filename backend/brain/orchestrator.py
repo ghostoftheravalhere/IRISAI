@@ -133,9 +133,9 @@ class BrainOrchestrator:
         raw_text = (request.raw_transcript or request.intent.text or "").lower().strip()
         intent_type = request.intent.intent
 
-        # 1. Unmatched phrases (NO_INTENT)
-        if intent_type == VoiceIntentType.NO_INTENT:
-            return True, "NO_INTENT phrase routed to AgentCore"
+        # 1. Unmatched phrases or search intents
+        if intent_type in (VoiceIntentType.NO_INTENT, VoiceIntentType.BROWSER_SEARCH):
+            return True, f"{intent_type.value} routed to AgentCore"
 
         # 2. Compound conjunctions ("and then", "and type", "and write", "and tell", "and search")
         compound_patterns = [" and ", " and then ", " then ", " and type ", " and write ", " and search ", " and summarize "]

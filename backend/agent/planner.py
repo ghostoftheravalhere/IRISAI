@@ -7,6 +7,7 @@ from backend.agent.task_state import Plan, PlanStep, TaskState
 from backend.agent.tool_registry import ToolDescriptor, ToolResult
 from backend.brain.reasoning.provider import PlannerProvider
 from backend.utils.logger import get_logger
+from backend.voice.command_parser import IntentParserService, VoiceIntentType
 
 logger = get_logger(__name__)
 
@@ -38,14 +39,10 @@ class PlanValidator:
             raise PlanValidationError("JSON root must be an object/dict")
 
         steps_raw = data.get("steps")
-        if not isinstance(steps_raw, list) or len(steps_raw) == 0:
-            raise PlanValidationError("JSON plan must contain a non-empty 'steps' list")
+        if not steps_raw or not isinstance(steps_raw, list):
+            raise PlanValidationError("Plan must contain a non-empty 'steps' list")
 
-        registered_names = (
-            {t.name.lower() for t in available_tools} | {t.tool_id.lower() for t in available_tools}
-            if available_tools
-            else None
-        )
+        registered_names = {t.name.lower() for t in available_tools} if available_tools else set()
 
         steps: list[PlanStep] = []
         for idx, step_dict in enumerate(steps_raw, start=1):
@@ -83,6 +80,7 @@ class Planner:
         self._provider = provider
         self._timeout_seconds = timeout_seconds
         self._enable_fallback = enable_fallback
+        self._intent_parser = IntentParserService()
 
     @property
     def provider(self) -> PlannerProvider | None:
@@ -159,7 +157,60 @@ class Planner:
         goal_lower = re.sub(r"^iris,?\s*", "", goal.lower().strip(), flags=re.IGNORECASE).strip()
         steps: list[PlanStep] = []
 
-        # 0. Multi-Tool combined productivity query
+        # 0. Conversational Identity Subsystem Queries
+        if any(phrase in goal_lower for phrase in ("who is this", "who is that", "do you know him", "do you know her")):
+            steps.append(PlanStep(1, "identity_tool", "Query current person identity", {"action": "query_current_person"}))
+            return Plan(goal=goal, steps=steps)
+
+        if "remember" in goal_lower:
+            if "don't" in goal_lower or "do not" in goal_lower:
+                steps.append(PlanStep(1, "identity_tool", "Reject person enrollment", {"action": "reject_person"}))
+            else:
+                match = re.search(r"as\s+([a-zA-Z]+)", goal_lower)
+                name = match.group(1).capitalize() if match else goal_lower.replace("remember", "").strip().capitalize()
+                steps.append(PlanStep(1, "identity_tool", f"Remember person as {name}", {"action": "remember_person", "name": name}))
+            return Plan(goal=goal, steps=steps)
+
+        if "forget" in goal_lower:
+            if "everyone" in goal_lower or "all" in goal_lower:
+                steps.append(PlanStep(1, "identity_tool", "Forget all remembered identities", {"action": "forget_all"}))
+            else:
+                name = goal_lower.replace("forget", "").strip().capitalize()
+                steps.append(PlanStep(1, "identity_tool", f"Forget person {name}", {"action": "forget_person", "name": name}))
+            return Plan(goal=goal, steps=steps)
+
+        # 0. Conversational UI Screen Grounding Queries
+        if any(phrase in goal_lower for phrase in ("find the", "find search", "find send", "where is the")):
+            target_name = re.sub(r"^(find|where is)\s+(the|a|an)?\s*", "", goal_lower).strip()
+            steps.append(PlanStep(1, "desktop_tool", f"Find UI element '{target_name}'", {"action": "find_element", "target": target_name}))
+            return Plan(goal=goal, steps=steps)
+
+        if any(term in goal_lower for term in ("this", "that", "here")) and any(cmd in goal_lower for cmd in ("click", "select", "right click")):
+            steps.append(PlanStep(1, "desktop_tool", f"Gaze spatial click '{goal_lower}'", {"action": "spatial_click", "target": goal_lower}))
+            return Plan(goal=goal, steps=steps)
+
+        if "visible" in goal_lower or "what buttons" in goal_lower or "what is that button" in goal_lower:
+            steps.append(PlanStep(1, "desktop_tool", "Query visible screen elements", {"action": "query_visible_elements"}))
+            return Plan(goal=goal, steps=steps)
+
+        if "click" in goal_lower and not any(app in goal_lower for app in ("chrome", "notepad", "calculator")):
+            target_name = re.sub(r"^(click|select)\s+(the|a|an)?\s*", "", goal_lower).strip()
+            steps.append(PlanStep(1, "desktop_tool", f"Click grounded UI element '{target_name}'", {"action": "click_grounded", "target": target_name}))
+            return Plan(goal=goal, steps=steps)
+
+        # 0a. Google account OAuth connection requests
+        if any(phrase in goal_lower for phrase in ("connect my google", "connect google", "connect gmail", "connect my gmail", "connect my calendar", "login to google", "sign in to google")):
+            steps.append(PlanStep(1, "desktop_tool", "Open Google OAuth authorization page in browser", {"action": "open_application", "target": "http://localhost:8000/api/auth/google/login"}))
+            return Plan(goal=goal, steps=steps)
+
+        # 0b. Triple-Service (Email + Calendar + GitHub) combined attention query
+        if ("email" in goal_lower or "mail" in goal_lower) and ("calendar" in goal_lower or "meeting" in goal_lower or "schedule" in goal_lower) and ("github" in goal_lower or "repo" in goal_lower or "attention" in goal_lower):
+            steps.append(PlanStep(1, "email_tool", "Check pending email attention items", {"action": "get_pending_attention"}))
+            steps.append(PlanStep(2, "calendar_tool", "Check today's scheduled meetings", {"action": "get_today_events"}))
+            steps.append(PlanStep(3, "github_tool", "Check GitHub repository activity summary", {"action": "get_activity_summary"}))
+            return Plan(goal=goal, steps=steps)
+
+        # 0c. Dual-Service GitHub + Email combined query
         if ("github" in goal_lower or "repo" in goal_lower) and ("email" in goal_lower or "mail" in goal_lower):
             steps.append(PlanStep(1, "github_tool", "Check GitHub repository activity summary", {"action": "get_activity_summary"}))
             steps.append(PlanStep(2, "email_tool", "Check important unread emails", {"action": "get_important_unread"}))
@@ -192,7 +243,7 @@ class Planner:
             return Plan(goal=goal, steps=steps)
 
         # 0d. Remote GitHub queries (issues, PRs, workflow status, or explicit remote GitHub queries)
-        if "github issues" in goal_lower or "open issues" in goal_lower or "pull request" in goal_lower or "workflow" in goal_lower or "ci status" in goal_lower:
+        if "github" in goal_lower and not ("completed" in goal_lower or "git status" in goal_lower):
             if "issue" in goal_lower:
                 steps.append(PlanStep(1, "github_tool", "Check open GitHub issues", {"action": "get_issues"}))
             elif "commit" in goal_lower or "changed" in goal_lower:
@@ -210,8 +261,8 @@ class Planner:
             steps.append(PlanStep(3, "filesystem_tool", "Read repository progress summary", {"action": "read_file", "path": ".ai/current_state.md"}))
             return Plan(goal=goal, steps=steps)
 
-        # 2. Compound actions ("Open Notepad and type hello" or "Open VS Code and tell me which files changed")
-        compound_match = re.search(r"open\s+([\w\s]+?)\s+and\s+(type|write|tell|check|show)\s+(.+)", goal_lower)
+        # 2. Compound actions ("Open Notepad and type hello" or "Open Chrome and search for Python 3.14")
+        compound_match = re.search(r"open\s+([\w\s]+?)\s+and\s+(type|write|tell|check|show|search)\s+(.+)", goal_lower)
         if compound_match:
             app_name = compound_match.group(1).strip()
             action_type = compound_match.group(2).strip()
@@ -220,6 +271,9 @@ class Planner:
             steps.append(PlanStep(1, "desktop_tool", f"Open application '{app_name}'", {"action": "open_application", "target": app_name}))
             if action_type in ("type", "write"):
                 steps.append(PlanStep(2, "desktop_tool", f"Type text '{payload}'", {"action": "type_text", "text": payload}))
+            elif action_type == "search" or "search" in payload:
+                query_str = re.sub(r"^for\s+", "", payload, flags=re.IGNORECASE).strip()
+                steps.append(PlanStep(2, "web_search_tool", f"Search web for '{query_str}'", {"action": "search", "query": query_str}))
             elif "files" in payload or "changed" in payload or "git" in payload:
                 steps.append(PlanStep(2, "git_tool", "Check git status for modified files", {"action": "get_status"}))
             else:
@@ -260,8 +314,48 @@ class Planner:
             steps.append(PlanStep(1, "filesystem_tool", f"Search files matching '{query}'", {"action": "search_files", "query": query}))
             return Plan(goal=goal, steps=steps)
 
-        # 8. Default single-step desktop UI action
-        steps.append(PlanStep(1, "desktop_tool", f"Execute command '{goal}'", {"action": "open_application", "target": goal}))
+        # 8. Canonical Voice Intent Resolution (Single Action Desktop Intent)
+        parsed_intent = self._intent_parser.parse(goal_lower)
+        if parsed_intent.intent != VoiceIntentType.NO_INTENT:
+            if parsed_intent.intent in (VoiceIntentType.OPEN_APPLICATION, VoiceIntentType.OPEN_CHROME, VoiceIntentType.OPEN_NOTEPAD):
+                app_target = parsed_intent.target or ("chrome" if parsed_intent.intent == VoiceIntentType.OPEN_CHROME else ("notepad" if parsed_intent.intent == VoiceIntentType.OPEN_NOTEPAD else goal_lower))
+                steps.append(PlanStep(1, "desktop_tool", f"Open application '{app_target}'", {"action": "open_application", "target": app_target}))
+                return Plan(goal=goal, steps=steps)
+            elif parsed_intent.intent == VoiceIntentType.RIGHT_CLICK:
+                steps.append(PlanStep(1, "desktop_tool", "Execute right click", {"action": "right_click"}))
+                return Plan(goal=goal, steps=steps)
+            elif parsed_intent.intent == VoiceIntentType.DOUBLE_CLICK:
+                steps.append(PlanStep(1, "desktop_tool", "Execute double click", {"action": "double_click"}))
+                return Plan(goal=goal, steps=steps)
+            elif parsed_intent.intent == VoiceIntentType.PRIMARY_CLICK:
+                steps.append(PlanStep(1, "desktop_tool", "Execute left click", {"action": "click"}))
+                return Plan(goal=goal, steps=steps)
+            elif parsed_intent.intent == VoiceIntentType.COPY:
+                steps.append(PlanStep(1, "desktop_tool", "Copy selection to clipboard", {"action": "copy"}))
+                return Plan(goal=goal, steps=steps)
+            elif parsed_intent.intent == VoiceIntentType.PASTE:
+                steps.append(PlanStep(1, "desktop_tool", "Paste clipboard content", {"action": "paste"}))
+                return Plan(goal=goal, steps=steps)
+            elif parsed_intent.intent == VoiceIntentType.SCROLL_DOWN:
+                steps.append(PlanStep(1, "desktop_tool", "Scroll down", {"action": "scroll_down"}))
+                return Plan(goal=goal, steps=steps)
+            elif parsed_intent.intent == VoiceIntentType.SCROLL_UP:
+                steps.append(PlanStep(1, "desktop_tool", "Scroll up", {"action": "scroll_up"}))
+                return Plan(goal=goal, steps=steps)
+            elif parsed_intent.intent == VoiceIntentType.TYPE_TEXT:
+                text_payload = parsed_intent.query or parsed_intent.params.get("text") or re.sub(r"^(type|write|say)\s+", "", goal_lower, flags=re.IGNORECASE).strip()
+                steps.append(PlanStep(1, "desktop_tool", f"Type text '{text_payload}'", {"action": "type_text", "text": text_payload}))
+                return Plan(goal=goal, steps=steps)
+            elif parsed_intent.intent == VoiceIntentType.CLOSE_WINDOW:
+                steps.append(PlanStep(1, "desktop_tool", "Close active window", {"action": "close_window"}))
+                return Plan(goal=goal, steps=steps)
+            elif parsed_intent.intent == VoiceIntentType.MINIMIZE_WINDOW:
+                steps.append(PlanStep(1, "desktop_tool", "Minimize active window", {"action": "minimize_window"}))
+                return Plan(goal=goal, steps=steps)
+
+        # 9. Default single-step desktop UI action
+        clean_target = re.sub(r"^(open|launch|start)\s+", "", goal_lower, flags=re.IGNORECASE).strip()
+        steps.append(PlanStep(1, "desktop_tool", f"Open application '{clean_target}'", {"action": "open_application", "target": clean_target}))
         return Plan(goal=goal, steps=steps)
 
     def evaluate_step_result(

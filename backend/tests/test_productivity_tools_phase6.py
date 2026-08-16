@@ -16,6 +16,13 @@ from backend.agent.tools.email_tool import EmailTool
 from backend.agent.tools.github_tool import GitHubTool
 
 
+@pytest.fixture(autouse=True)
+def mock_google_auth_service_for_phase6(monkeypatch):
+    """Ensure Phase 6 unit tests run deterministically against fallback mock data."""
+    monkeypatch.setattr("backend.agent.tools.email_tool.google_auth_service.get_valid_access_token", lambda: None)
+    monkeypatch.setattr("backend.agent.tools.calendar_tool.google_auth_service.get_valid_access_token", lambda: None)
+
+
 def test_1_email_unread_query():
     """1. Test EmailTool get_unread_count query."""
     tool = EmailTool(email_account="testuser@example.com")
@@ -75,8 +82,10 @@ def test_7_github_issues():
     assert "issues" in res.data
 
 
-def test_8_authentication_failure():
+def test_8_authentication_failure(monkeypatch):
     """8. Test that unconfigured tools return structured AUTH_UNAVAILABLE failure."""
+    monkeypatch.setattr("backend.agent.tools.email_tool.google_auth_service.get_status", lambda: "Google not connected")
+    monkeypatch.setattr("backend.agent.tools.calendar_tool.google_auth_service.get_status", lambda: "Google not connected")
     e_tool = EmailTool(email_account=None)
     c_tool = CalendarTool(calendar_account=None)
     g_tool = GitHubTool(token=None)

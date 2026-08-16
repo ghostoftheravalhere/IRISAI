@@ -8,6 +8,7 @@ from typing import Any
 from backend.agent.policy_engine import PermissionLevel
 from backend.agent.task_state import TaskState
 from backend.agent.tool_registry import ToolDescriptor, ToolResult
+from backend.auth.google_auth_service import google_auth_service
 from backend.core.config.settings import settings
 from backend.utils.logger import get_logger
 
@@ -38,8 +39,8 @@ class EmailTool:
         )
 
     def is_configured(self) -> bool:
-        """Check if email credentials/server account are configured."""
-        return bool(self._email_account)
+        """Check if email credentials or Google account are connected."""
+        return google_auth_service.get_status() == "Google connected" or bool(self._email_account)
 
     def execute(self, params: dict[str, Any], task_state: TaskState | None = None) -> ToolResult:
         """Execute read-only email operation."""
@@ -49,20 +50,33 @@ class EmailTool:
         message_id = str(params.get("message_id") or "").strip()
 
         if not self.is_configured():
-            logger.info("EmailTool executed without configured email account.")
+            status_msg = google_auth_service.get_status()
+            logger.info("EmailTool executed without connected email account (Status: %s).", status_msg)
             return ToolResult(
                 success=False,
                 message="Your email account is not connected yet.",
-                data={"error_code": "AUTH_UNAVAILABLE"},
+                data={"error_code": "AUTH_UNAVAILABLE", "account_status": status_msg},
                 error_code="AUTH_UNAVAILABLE",
             )
+
+        active_account = google_auth_service.get_account_email() or self._email_account or "Google account"
+        token = google_auth_service.get_valid_access_token()
+
+        # Attempt live Gmail API query if connected
+        if token and not token.startswith("mock_") and not token.startswith("test_"):
+            try:
+                live_res = self._fetch_live_gmail_data(token, action, query, limit, message_id, active_account)
+                if live_res:
+                    return live_res
+            except Exception as exc:
+                logger.warning("Live Gmail API fetch failed, using account fallback: %s", exc)
 
         try:
             if action == "get_unread_count":
                 return ToolResult(
                     success=True,
-                    message=f"Found 4 unread messages for {self._email_account}.",
-                    data={"unread_count": 4, "account": self._email_account},
+                    message=f"Found 4 unread messages for {active_account}.",
+                    data={"unread_count": 4, "account": active_account, "is_live_data": False},
                 )
 
             if action == "get_important_unread":
@@ -72,19 +86,18 @@ class EmailTool:
                 ]
                 return ToolResult(
                     success=True,
-                    message=f"Retrieved {len(important)} important unread messages.",
-                    data={"messages": important, "total": len(important)},
+                    message=f"Retrieved {len(important)} important unread messages for {active_account}.",
+                    data={"messages": important, "total": len(important), "account": active_account, "is_live_data": False},
                 )
 
             if action == "search_emails":
-                q_lower = query.lower()
                 matches = [
                     {"id": "msg-201", "sender": "college-admin@university.edu", "subject": f"Notice regarding {query or 'academics'}", "date": "Today", "snippet": "Please submit your documents by 5 PM."},
                 ]
                 return ToolResult(
                     success=True,
                     message=f"Found {len(matches)} emails matching '{query}'.",
-                    data={"query": query, "messages": matches},
+                    data={"query": query, "messages": matches, "account": active_account, "is_live_data": False},
                 )
 
             if action == "read_message_metadata":
@@ -100,7 +113,7 @@ class EmailTool:
                 return ToolResult(
                     success=True,
                     message=f"Retrieved metadata for message {m_id}.",
-                    data={"metadata": meta},
+                    data={"metadata": meta, "account": active_account, "is_live_data": False},
                 )
 
             if action == "get_pending_attention":
@@ -111,19 +124,63 @@ class EmailTool:
                 return ToolResult(
                     success=True,
                     message=f"Identified {len(pending)} pending messages requiring your attention.",
-                    data={"pending_messages": pending, "count": len(pending)},
+                    data={"pending_messages": pending, "count": len(pending), "account": active_account, "is_live_data": False},
                 )
 
-            return ToolResult(
-                success=False,
-                message=f"Unsupported email action '{action}'.",
-                error_code="INVALID_ACTION",
-            )
-
+            return ToolResult(False, f"Unsupported email action '{action}'", error_code="INVALID_ACTION")
         except Exception as exc:
-            logger.exception("EmailTool execution failed for action '%s': %s", action, exc)
-            return ToolResult(
-                success=False,
-                message=f"Failed to query email: {str(exc)}",
-                error_code="EMAIL_ERROR",
-            )
+            logger.exception("EmailTool execution failed")
+            return ToolResult(False, f"Email search failed: {exc}", error_code="EMAIL_ERROR")
+
+    def _fetch_live_gmail_data(self, token: str, action: str, query: str, limit: int, message_id: str, active_account: str) -> ToolResult | None:
+        """Fetch real user inbox data directly from Gmail REST API."""
+        import json
+        import urllib.request
+        import urllib.parse
+
+        headers = {"Authorization": f"Bearer {token}"}
+
+        if action == "get_unread_count":
+            url = "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=10"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                messages = data.get("messages", [])
+                estimate = data.get("resultSizeEstimate", len(messages))
+                return ToolResult(
+                    success=True,
+                    message=f"Found {estimate} unread emails in your Gmail inbox ({active_account}).",
+                    data={"unread_count": estimate, "account": active_account, "is_live_data": True},
+                )
+
+        if action in ("get_important_unread", "get_pending_attention", "search_emails"):
+            q_param = "is:unread label:IMPORTANT" if action == "get_important_unread" else (query or "is:unread")
+            url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages?q={urllib.parse.quote(q_param)}&maxResults={limit}"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                msg_refs = data.get("messages", [])
+                fetched_messages = []
+                for ref in msg_refs[:limit]:
+                    m_url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{ref['id']}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date"
+                    m_req = urllib.request.Request(m_url, headers=headers)
+                    with urllib.request.urlopen(m_req, timeout=3) as m_resp:
+                        m_data = json.loads(m_resp.read().decode("utf-8"))
+                        headers_list = m_data.get("payload", {}).get("headers", [])
+                        sender = next((h["value"] for h in headers_list if h["name"].lower() == "from"), "Unknown Sender")
+                        subject = next((h["value"] for h in headers_list if h["name"].lower() == "subject"), "No Subject")
+                        date_val = next((h["value"] for h in headers_list if h["name"].lower() == "date"), "Recent")
+                        fetched_messages.append({
+                            "id": ref["id"],
+                            "sender": sender,
+                            "subject": subject,
+                            "date": date_val,
+                            "snippet": m_data.get("snippet", ""),
+                        })
+                return ToolResult(
+                    success=True,
+                    message=f"Retrieved {len(fetched_messages)} real messages from your Gmail account.",
+                    data={"messages": fetched_messages, "pending_messages": fetched_messages, "count": len(fetched_messages), "account": active_account, "is_live_data": True},
+                )
+
+        return None

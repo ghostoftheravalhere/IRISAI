@@ -61,6 +61,7 @@ class GitTool:
                 True,
                 f"Branch: '{branch or 'main'}', Modified files: {len(files_modified)}",
                 data={
+                    "canonical_action": action.upper(),
                     "branch": branch or "main",
                     "status_summary": out,
                     "modified_files": files_modified,

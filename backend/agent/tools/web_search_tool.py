@@ -62,6 +62,7 @@ class WebSearchTool:
             True,
             msg,
             data={
+                "canonical_action": "BROWSER_SEARCH",
                 "query": query,
                 "sources": sources,
                 "confidence": confidence,

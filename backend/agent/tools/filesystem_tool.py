@@ -105,7 +105,9 @@ class FilesystemTool:
             raw_matches = []
             try:
                 search_root = safe_path if safe_path.is_dir() else self._workspace_root
-                for root, _, files in os.walk(search_root):
+                ignored_dirs = {".venv", "node_modules", ".git", "__pycache__", ".pytest_cache", "dist", "build", "release"}
+                for root, dirs, files in os.walk(search_root):
+                    dirs[:] = [d for d in dirs if d not in ignored_dirs and not d.startswith(".")]
                     for f_name in files:
                         full_p = Path(root) / f_name
                         rel_p = str(full_p.relative_to(self._workspace_root))

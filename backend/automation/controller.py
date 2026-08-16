@@ -413,7 +413,13 @@ class DesktopController:
             return False
 
         try:
-            pyautogui.click(button=button, clicks=clicks)
+            self._ensure_safe_cursor_position(pyautogui)
+            old_failsafe = pyautogui.FAILSAFE
+            try:
+                pyautogui.FAILSAFE = False
+                pyautogui.click(button=button, clicks=clicks)
+            finally:
+                pyautogui.FAILSAFE = old_failsafe
             return True
         except Exception:
             logger.exception("Voice automation click failed.")
@@ -439,7 +445,13 @@ class DesktopController:
             return False
 
         try:
-            pyautogui.press(key, presses=presses)
+            self._ensure_safe_cursor_position(pyautogui)
+            old_failsafe = pyautogui.FAILSAFE
+            try:
+                pyautogui.FAILSAFE = False
+                pyautogui.press(key, presses=presses)
+            finally:
+                pyautogui.FAILSAFE = old_failsafe
             return True
         except Exception:
             logger.exception("Voice automation key press failed: %s", key)
@@ -452,7 +464,13 @@ class DesktopController:
             return False
 
         try:
-            pyautogui.hotkey(*keys)
+            self._ensure_safe_cursor_position(pyautogui)
+            old_failsafe = pyautogui.FAILSAFE
+            try:
+                pyautogui.FAILSAFE = False
+                pyautogui.hotkey(*keys)
+            finally:
+                pyautogui.FAILSAFE = old_failsafe
             return True
         except Exception:
             logger.exception("Voice automation hotkey failed: %s", "+".join(keys))
@@ -463,9 +481,14 @@ class DesktopController:
         try:
             cur_x, cur_y = pyautogui.position()
             screen_w, screen_h = pyautogui.size()
-            if cur_x <= 5 or cur_y <= 5 or cur_x >= screen_w - 5 or cur_y >= screen_h - 5:
-                safe_x, safe_y = max(100, screen_w // 2), max(100, screen_h // 2)
-                pyautogui.moveTo(safe_x, safe_y)
+            if cur_x <= 10 or cur_y <= 10 or cur_x >= screen_w - 10 or cur_y >= screen_h - 10:
+                old_failsafe = pyautogui.FAILSAFE
+                try:
+                    pyautogui.FAILSAFE = False
+                    safe_x, safe_y = max(100, screen_w // 2), max(100, screen_h // 2)
+                    pyautogui.moveTo(safe_x, safe_y)
+                finally:
+                    pyautogui.FAILSAFE = old_failsafe
         except Exception:
             pass
 
@@ -477,7 +500,12 @@ class DesktopController:
 
         try:
             self._ensure_safe_cursor_position(pyautogui)
-            pyautogui.write(text, interval=0.01)
+            old_failsafe = pyautogui.FAILSAFE
+            try:
+                pyautogui.FAILSAFE = False
+                pyautogui.write(text, interval=0.01)
+            finally:
+                pyautogui.FAILSAFE = old_failsafe
             return True
         except Exception:
             logger.exception("Voice automation type_text failed: %s", text)

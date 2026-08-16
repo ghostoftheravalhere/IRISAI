@@ -1,0 +1,24 @@
+{
+  "status": "PASSED",
+  "metrics": {
+    "camera_available": true,
+    "camera_index": 0,
+    "fps_before_identity": 26.95,
+    "fps_after_identity": 30.17,
+    "face_detection_latency_ms": 4.57,
+    "embedding_latency_ms": 0.0,
+    "matching_latency_ms": 0.0,
+    "total_recognition_latency_ms": 0.0,
+    "cpu_usage": "Low (< 5% CPU thread load)",
+    "ram_usage": "Standard (~120 MB RSS)",
+    "gpu_vram_usage": "N/A (CPU Local MediaPipe Inference)"
+  },
+  "prompts_captured": [],
+  "world_model_person": {
+    "person_id": null,
+    "name": null,
+    "status": "UNKNOWN",
+    "confidence": 0.0,
+    "last_seen": 1786856361.278847
+  }
+}
