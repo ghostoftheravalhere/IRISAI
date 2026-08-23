@@ -213,6 +213,24 @@ export class IRISApiClient {
       return { is_connected: false };
     }
   }
+
+  static async getEventHistory() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/events/history`);
+      return await res.json();
+    } catch (e) {
+      return { events: [] };
+    }
+  }
+
+  static async getInstalledApps() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/apps`);
+      return await res.json();
+    } catch (e) {
+      return { applications: [] };
+    }
+  }
 }
 
 export class IRISWebSocketClient {
@@ -221,12 +239,21 @@ export class IRISWebSocketClient {
     this.onStatusChange = onStatusChangeCallback;
     this.ws = null;
     this.reconnectTimer = null;
+    this.isConnecting = false;
   }
 
   connect() {
+    if (this.isConnecting) return;
+    this.isConnecting = true;
     try {
+      if (this.ws) {
+        try {
+          this.ws.close();
+        } catch (e) {}
+      }
       this.ws = new WebSocket(WS_BASE_URL);
       this.ws.onopen = () => {
+        this.isConnecting = false;
         if (this.onStatusChange) this.onStatusChange("CONNECTED");
       };
       this.ws.onmessage = (event) => {
@@ -238,13 +265,17 @@ export class IRISWebSocketClient {
         }
       };
       this.ws.onclose = () => {
+        this.isConnecting = false;
         if (this.onStatusChange) this.onStatusChange("DISCONNECTED");
         this.scheduleReconnect();
       };
       this.ws.onerror = () => {
+        this.isConnecting = false;
         if (this.onStatusChange) this.onStatusChange("ERROR");
+        this.scheduleReconnect();
       };
     } catch (err) {
+      this.isConnecting = false;
       this.scheduleReconnect();
     }
   }
@@ -254,12 +285,16 @@ export class IRISWebSocketClient {
       this.reconnectTimer = setTimeout(() => {
         this.reconnectTimer = null;
         this.connect();
-      }, 3000);
+      }, 2000);
     }
   }
 
   disconnect() {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    if (this.ws) this.ws.close();
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch (e) {}
+    }
   }
 }

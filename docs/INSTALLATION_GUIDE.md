@@ -77,7 +77,7 @@ The hardware and software specifications listed below reflect the actual IRIS AI
 - **Release Page URL**: `https://github.com/ghostoftheravalhere/IRISAI/releases/tag/v2.4.0`
 - **Installer Direct Download**: `https://github.com/ghostoftheravalhere/IRISAI/releases/download/v2.4.0/IRIS-AI-V2.4-Setup.exe`
 - **Verified File Size**: **363.69 MB** (`381,357,000+ bytes`)
-- **SHA256 Checksum**: `0CC89FCCA1194E45DEAB16800C67015D328346CFAC1110A987B18AB9B5257B4D`
+- **SHA256 Checksum**: `9B52F78BA0D132353F905DAC9702169B86C7DF53FB8F8175E99BFFCF6ABE5F96`
 
 ### Bundled Components
 The installer is completely self-contained and packages all required runtime components:

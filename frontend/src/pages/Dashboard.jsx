@@ -100,6 +100,40 @@ export default function Dashboard() {
       setGoogleAuth(gAuth);
       const ghAuth = await IRISApiClient.getGitHubStatus();
       setGithubAuth(ghAuth);
+
+      // Synchronize Command Log from Event History
+      const histData = await IRISApiClient.getEventHistory();
+      if (histData && Array.isArray(histData.events) && histData.events.length > 0) {
+        setHistory((prev) => {
+          const newEntries = [];
+          for (const ev of histData.events) {
+            if (ev.event_type === "TranscriptionCompletedEvent" && ev.raw_transcript) {
+              const raw = ev.raw_transcript.trim();
+              if (raw && !newEntries.some((e) => e.transcript === raw)) {
+                newEntries.push({
+                  source: "USER",
+                  timestamp: new Date(ev.timestamp * 1000).toLocaleTimeString(),
+                  transcript: raw,
+                });
+              }
+            } else if (ev.event_type === "AutomationExecutedEvent") {
+              const resp = ev.execution_status || ev.message || "Action processed.";
+              if (resp && !newEntries.some((e) => e.response === resp)) {
+                newEntries.push({
+                  source: "IRIS",
+                  timestamp: new Date(ev.timestamp * 1000).toLocaleTimeString(),
+                  response: resp,
+                });
+              }
+            }
+          }
+          if (newEntries.length === 0) return prev;
+          // Merge unique entries
+          const existingTranscripts = new Set(prev.map((p) => p.transcript || p.response));
+          const toAdd = newEntries.filter((e) => !existingTranscripts.has(e.transcript || e.response));
+          return [...toAdd, ...prev];
+        });
+      }
     };
 
     fetchSystemData();

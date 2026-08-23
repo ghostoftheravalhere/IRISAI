@@ -147,6 +147,19 @@ def create_app() -> FastAPI:
             return app.state.metrics_registry.get_metrics_summary()
         return {}
 
+    @app.get("/api/v1/apps")
+    async def get_installed_apps():
+        """Diagnostic tool: Return all resolvable installed applications on this Windows computer."""
+        from backend.automation.app_resolver import app_resolver
+        return {"applications": app_resolver.list_installed_applications()}
+
+    _recent_event_history: list[dict] = []
+
+    @app.get("/api/v1/events/history")
+    async def get_event_history():
+        """Return recent EventBus history for Command Log state synchronization."""
+        return {"events": _recent_event_history[-50:]}
+
     @app.websocket("/ws/events")
     async def websocket_events_endpoint(websocket: WebSocket):
         """WebSocket endpoint for real-time domain telemetry and agent event streaming."""
@@ -168,6 +181,10 @@ def create_app() -> FastAPI:
                             event_dict[attr] = [dict(s) if hasattr(s, "_asdict") else str(s) for s in val]
                         else:
                             event_dict[attr] = str(val)
+
+                _recent_event_history.append(event_dict)
+                if len(_recent_event_history) > 100:
+                    _recent_event_history.pop(0)
 
                 loop.call_soon_threadsafe(queue.put_nowait, event_dict)
             except Exception as e:
