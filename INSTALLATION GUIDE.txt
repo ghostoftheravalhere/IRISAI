@@ -6,99 +6,76 @@ Intelligent Responsive Interface System
 IBM SkillsBuild Hackathon Official Submission
 
 --------------------------------------------------
-EXECUTIVE OVERVIEW
+EXECUTIVE OVERVIEW & QUICK START
 --------------------------------------------------
 This guide is written specifically for IBM SkillsBuild Hackathon judges, mentors, evaluators, and end-users who wish to install, evaluate, and demonstrate IRIS AI V2.4 on Windows.
 
 No separate Python or Node.js installation is required.
+No npm commands are required.
+No terminal commands are required.
 
-IRIS AI V2.4 is distributed as a single, standalone, self-contained Windows Installer:
+IRIS AI V2.4 is distributed as a single, standalone, self-contained Windows Installer (IRIS-AI-V2.4-Setup.exe) hosted on the official GitHub Release (v2.4.0):
 
-    frontend/release/IRIS-AI-V2.4-Setup.exe (363.69 MB)
+Official Release Page:
+https://github.com/ghostoftheravalhere/IRISAI/releases/tag/v2.4.0
 
-Flow:
-Download IRIS-AI-V2.4-Setup.exe -> Run Setup -> Launch IRIS AI -> Ready
+Direct Installer Download URL:
+https://github.com/ghostoftheravalhere/IRISAI/releases/download/v2.4.0/IRIS-AI-V2.4-Setup.exe
 
 --------------------------------------------------
-1. SYSTEM REQUIREMENTS
+1. JUDGE INSTALLATION STEPS
+--------------------------------------------------
+STEP 1: Open GitHub Release page:
+https://github.com/ghostoftheravalhere/IRISAI/releases/tag/v2.4.0
+
+STEP 2: Open "IRIS AI V2.4 — IBM SkillsBuild Submission".
+
+STEP 3: Download "IRIS-AI-V2.4-Setup.exe" (363.69 MB) from Assets.
+
+STEP 4: Run IRIS-AI-V2.4-Setup.exe.
+Note: If Windows SmartScreen shows a warning ("Windows protected your PC"), click "More info" -> "Run anyway". Click Next -> Install -> Finish.
+
+STEP 5: Double-click the "IRIS AI" Desktop shortcut.
+
+--------------------------------------------------
+2. SYSTEM REQUIREMENTS & FILE CHECKSUM
 --------------------------------------------------
 - Operating System : Windows 10 or Windows 11 (64-bit)
-- Processor (CPU)  : Intel Core i3 / AMD Ryzen 3 (Dual-Core+)
 - Memory (RAM)     : 4 GB minimum (8 GB recommended)
 - Disk Space       : ~1.2 GB free space after installation
-- Webcam           : Standard USB or Built-in Webcam (for gaze tracking & blink detection)
+- Webcam           : Standard USB or Built-in Webcam (for gaze tracking)
 - Microphone       : Standard Built-in or USB Microphone (for voice commands)
 - Internet         : NONE (100% Offline Capability)
-- Admin Privileges : Standard User permissions (No Admin required)
+- Release Tag      : v2.4.0
+- Installer Size   : 363.69 MB (381,357,000+ bytes)
+- SHA256 Checksum  : FA2EE4CA7ED5767EE0FF4B2FB86FF53DB7788484B6BD6EEDBAF0BAFDDCED9DA2
 
 --------------------------------------------------
-2. INSTALLER OVERVIEW
+3. FIRST-TIME EYE GAZE CALIBRATION GUIDE
 --------------------------------------------------
-- Installer Executable: frontend/release/IRIS-AI-V2.4-Setup.exe
-- Installer File Size  : Approximately 363.69 MB
-- Installer Format     : Standalone Windows NSIS Setup Executable
-
-Bundled Components Included:
-- Electron Application (Desktop Shell)
-- React Frontend (Dashboard UI & Command Log)
-- Standalone Python Runtime (Embedded Python 3.12 environment)
-- FastAPI / Uvicorn (Backend API Server)
-- Faster-Whisper (Speech Recognition Engine)
-- Whisper Base Model (Offline AI model, 138.49 MB model.bin included)
-- MediaPipe (Facial Landmark & Eye Gaze Tracker)
-- PyAutoGUI (Windows Desktop Automation)
-
---------------------------------------------------
-3. INSTALLATION STEPS
---------------------------------------------------
-Step 1 — Download/Copy:
-Obtain IRIS-AI-V2.4-Setup.exe from frontend/release/.
-
-Step 2 — Start Installer:
-Double-click IRIS-AI-V2.4-Setup.exe.
-Note: If Windows SmartScreen shows a warning ("Windows protected your PC"), click "More info" -> "Run anyway".
-
-Step 3 — Installation Wizard:
-Click "Next" on the setup wizard.
-
-Step 4 — Installation Location:
-Defaults to %LOCALAPPDATA%\Programs\IRIS AI. Click "Install".
-
-Step 5 — Shortcuts:
-The installer automatically creates Desktop and Start Menu shortcuts.
-
-Step 6 — Finish & Launch:
-Check "Launch IRIS AI" and click "Finish".
-
-Step 7 — Permissions:
-Allow camera and microphone permissions when requested by Windows.
-
---------------------------------------------------
-4. FIRST-TIME EYE GAZE CALIBRATION GUIDE
---------------------------------------------------
-1. Launch IRIS AI from the Desktop shortcut.
-2. Click "Calibrate Gaze" on the action bar.
-3. Position your face in front of camera until face tracking displays Detected.
-4. Observe Target 1/9: Top-Left. Look directly at the pulsating dot.
+1. Launch IRIS AI from Desktop shortcut.
+2. Click "Calibrate Gaze" on dashboard action bar.
+3. Position face in front of camera until face tracking displays Detected.
+4. Observe Target 1/9: Top-Left. Look directly at pulsating dot.
 5. Click "Sample Point 1/9 ->".
 6. Repeat for all 9 points.
 7. Observe completion modal: "✓ Calibration Complete".
-8. Verify status displays "Cursor Control: READY".
+8. Verify status: "Cursor Control: READY".
 9. Click "▶ Start Cursor Control" -> Status changes to "Cursor Control: ACTIVE".
 10. Click "⏹ Stop Cursor Control" to pause movement.
 
 --------------------------------------------------
-5. DEMONSTRATION VOICE COMMANDS
+4. DEMONSTRATION VOICE COMMANDS
 --------------------------------------------------
-- "Open Chrome"        -> Opens Google Chrome
-- "Open Microsoft Edge" -> Opens Microsoft Edge
-- "Open Notepad"       -> Opens Windows Notepad
+- "Open Chrome"         -> Opens Google Chrome
+- "Open Microsoft Edge"  -> Opens Microsoft Edge
+- "Open Notepad"        -> Opens Windows Notepad
 - "Open Microsoft Word" -> Opens Microsoft Word (Word 2016.lnk)
-- "Open Calculator"    -> Opens Windows Calculator (calc.exe)
-- "Close IRIS"         -> Clean application exit
+- "Open Calculator"     -> Opens Windows Calculator (calc.exe)
+- "Close IRIS"          -> Clean application exit
 
 --------------------------------------------------
-6. V2.4 VOICE OUTPUT CONFIGURATION NOTICE
+5. V2.4 VOICE OUTPUT CONFIGURATION NOTICE
 --------------------------------------------------
 For V2.4 Submission Stability Mode:
 - Voice Input  = ENABLED
@@ -107,17 +84,9 @@ For V2.4 Submission Stability Mode:
 This design decision prevents audio feedback/self-hearing during hackathon demonstration.
 
 --------------------------------------------------
-7. TROUBLESHOOTING
---------------------------------------------------
-- Camera Not Ready     : Close Zoom/Teams, check Windows Camera privacy, restart IRIS.
-- Microphone Not Ready : Check Windows Microphone privacy, click "Retry Microphone".
-- Cursor Not Moving    : Complete 9-point calibration, verify READY, click "Start Cursor Control".
-- App Command Reports "Not Found" : Requested app is not installed on system. IRIS cleanly reports status.
-
---------------------------------------------------
-8. SUBMISSION BUILD VERIFICATION
+6. SUBMISSION BUILD VERIFICATION
 --------------------------------------------------
 - Test Suite      : 74 / 74 PASSED (100% Green)
-- Frontend Build  : Vite compiled cleanly in 1.31s
-- Installer Size  : 363.69 MB
+- Frontend Build  : Vite compiled cleanly in 1.77s
+- Installer Asset : 363.69 MB uploaded to GitHub Release v2.4.0
 - Offline Model   : 138.49 MB model.bin included

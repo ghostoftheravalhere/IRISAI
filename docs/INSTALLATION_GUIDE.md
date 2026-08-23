@@ -10,25 +10,51 @@
 This guide is written specifically for **IBM SkillsBuild Hackathon judges, mentors, evaluators, and end-users** who wish to install, evaluate, and demonstrate **IRIS AI V2.4** on Windows.
 
 **No separate Python or Node.js installation is required.**
+**No npm commands are required.**
+**No terminal commands are required.**
 
-IRIS AI V2.4 is distributed as a **single, standalone, self-contained Windows Installer (`IRIS-AI-V2.4-Setup.exe`)**.
+IRIS AI V2.4 is distributed as a **single, standalone, self-contained Windows Installer (`IRIS-AI-V2.4-Setup.exe`)** hosted on the official **GitHub Release (`v2.4.0`)**.
 
 ```
-Download IRIS-AI-V2.4-Setup.exe
-               │
-               ▼
-       Run Installer Wizard
-               │
-               ▼
-  Launch IRIS AI Desktop Shortcut
-               │
-               ▼
-     IRIS AI Interface Ready
+GitHub Releases (v2.4.0)
+           │
+           ▼
+Download IRIS-AI-V2.4-Setup.exe (363.69 MB)
+           │
+           ▼
+   Run Setup Installer Wizard
+           │
+           ▼
+Launch IRIS AI Desktop Shortcut
+           │
+           ▼
+ IRIS AI Interface Ready
 ```
 
 ---
 
-## 1. System Requirements
+## 1. Quick Judge Download & Installation Steps
+
+Follow these 5 simple steps to install and run IRIS AI on any Windows PC:
+
+1. **STEP 1**: Open the official GitHub Releases page:
+   👉 **[IRIS AI V2.4 GitHub Release](https://github.com/ghostoftheravalhere/IRISAI/releases/tag/v2.4.0)**
+
+2. **STEP 2**: Locate **"IRIS AI V2.4 — IBM SkillsBuild Submission"**.
+
+3. **STEP 3**: In the **Assets** section at the bottom, click to download **`IRIS-AI-V2.4-Setup.exe`** (`363.69 MB`).
+
+4. **STEP 4**: Run the downloaded **`IRIS-AI-V2.4-Setup.exe`** file.
+   - *Security Note*: If Windows SmartScreen displays a warning (*"Windows protected your PC"*), click **More info** → **Run anyway**.
+   - Click **Next** → **Install** → **Finish**.
+
+5. **STEP 5**: Launch IRIS AI by double-clicking the **IRIS AI** Desktop shortcut (or Start Menu shortcut).
+   - Allow camera and microphone permissions when prompted by Windows.
+   - Electron starts automatically, connects to the bundled backend server, and presents the IRIS AI Dashboard in **READY** state.
+
+---
+
+## 2. System Requirements
 
 The hardware and software specifications listed below reflect the actual IRIS AI V2.4 build:
 
@@ -45,12 +71,13 @@ The hardware and software specifications listed below reflect the actual IRIS AI
 
 ---
 
-## 2. Installer Overview
+## 3. Installer Payload & Verification
 
-- **Installer Executable**: `IRIS-AI-V2.4-Setup.exe`
-- **Expected File Location**: `frontend/release/IRIS-AI-V2.4-Setup.exe`
-- **Verified File Size**: **363.69 MB**
-- **Installer Format**: Standalone Windows NSIS Setup Executable
+- **Official Release Tag**: `v2.4.0`
+- **Release Page URL**: `https://github.com/ghostoftheravalhere/IRISAI/releases/tag/v2.4.0`
+- **Installer Direct Download**: `https://github.com/ghostoftheravalhere/IRISAI/releases/download/v2.4.0/IRIS-AI-V2.4-Setup.exe`
+- **Verified File Size**: **363.69 MB** (`381,357,000+ bytes`)
+- **SHA256 Checksum**: `FA2EE4CA7ED5767EE0FF4B2FB86FF53DB7788484B6BD6EEDBAF0BAFDDCED9DA2`
 
 ### Bundled Components
 The installer is completely self-contained and packages all required runtime components:
@@ -68,25 +95,6 @@ The installer is completely self-contained and packages all required runtime com
 
 ---
 
-## 3. Installation Steps
-
-Follow these simple steps to install IRIS AI on any Windows PC:
-
-1. **Download/Copy**: Obtain `IRIS-AI-V2.4-Setup.exe` from the official repository release folder (`frontend/release/`).
-2. **Run Installer**: Double-click `IRIS-AI-V2.4-Setup.exe`.
-   - *Security Note*: If Windows SmartScreen displays a warning (*"Windows protected your PC"*), click **More info** $\rightarrow$ **Run anyway**.
-3. **Wizard Navigation**: Click **Next** on the NSIS installation wizard.
-4. **Choose Location**: Select installation directory (defaults to `%LOCALAPPDATA%\Programs\IRIS AI`), then click **Install**.
-5. **Shortcuts Created**: The installer automatically creates:
-   - **Desktop Shortcut**: `IRIS AI`
-   - **Start Menu Shortcut**: `IRIS AI`
-   - **Windows App Settings Uninstaller**
-6. **Launch IRIS AI**: Check **"Launch IRIS AI"** and click **Finish** (or double-click the Desktop shortcut).
-7. **Permissions**: Allow camera and microphone permissions when requested by Windows.
-8. **System Ready**: Electron starts automatically, connects to the bundled backend server, and presents the IRIS AI Dashboard in **READY** state.
-
----
-
 ## 4. First-Time Eye Gaze Calibration Guide
 
 Perform these 10 simple steps to calibrate eye gaze tracking and test cursor control:
@@ -100,7 +108,7 @@ Perform these 10 simple steps to calibrate eye gaze tracking and test cursor con
 7. Continue looking at each target dot (Top-Center, Top-Right, Middle-Left, Center, Middle-Right, Bottom-Left, Bottom-Center, Bottom-Right) and click **Sample Point**.
 8. After Point 9 is sampled, observe the completion modal: **✓ Calibration Complete**.
 9. Verify status displays **Cursor Control: READY**.
-10. Click **▶ Start Cursor Control** $\rightarrow$ Status changes to **Cursor Control: ACTIVE**, and your eye gaze moves the screen cursor. Click **⏹ Stop Cursor Control** to pause movement.
+10. Click **▶ Start Cursor Control** → Status changes to **Cursor Control: ACTIVE**, and your eye gaze moves the screen cursor. Click **⏹ Stop Cursor Control** to pause movement.
 
 ---
 
@@ -116,8 +124,6 @@ IRIS AI V2.4 utilizes a centralized `DesktopAppResolver` architecture with expli
 | `"Open Microsoft Word"` | Microsoft Word opens | Explicit `Word 2016.lnk` Start Menu shortcut |
 | `"Open Calculator"` | Windows Calculator opens | Explicit `calc.exe` system executable |
 | `"Close IRIS"` | IRIS AI performs clean application exit | Graceful Electron & backend process teardown |
-
-*Note on Desktop Automation*: IRIS AI uses explicit application mappings rather than arbitrary shell execution to guarantee that commands like `"Open Microsoft Word"` will **NEVER** incorrectly launch Microsoft Edge or open browser searches.
 
 ---
 
@@ -136,11 +142,11 @@ For the **IBM SkillsBuild Hackathon V2.4 Submission**, IRIS AI is intentionally 
 
 ### Camera Not Ready
 - Ensure no other application (e.g., Zoom, Teams) is exclusively holding the webcam.
-- Check Windows Privacy settings (**Settings** $\rightarrow$ **Privacy** $\rightarrow$ **Camera** = **ON**).
+- Check Windows Privacy settings (**Settings** → **Privacy** → **Camera** = **ON**).
 - Restart IRIS AI.
 
 ### Microphone Not Ready
-- Ensure microphone privacy is enabled (**Settings** $\rightarrow$ **Privacy** $\rightarrow$ **Microphone** = **ON**).
+- Ensure microphone privacy is enabled (**Settings** → **Privacy** → **Microphone** = **ON**).
 - Ensure the microphone is connected and set as default input device.
 - Click **🔄 Retry Microphone** on the dashboard.
 
@@ -149,17 +155,13 @@ For the **IBM SkillsBuild Hackathon V2.4 Submission**, IRIS AI is intentionally 
 - Verify status displays **Cursor Control: READY**.
 - Click **▶ Start Cursor Control** to activate cursor tracking.
 
-### Application Command Reports "Could Not Be Found"
-- Verify the requested application (e.g., Microsoft Word) is installed on the host computer.
-- IRIS cleanly reports: `Sir, I couldn't find <Application> on this computer.` This is expected safe behavior.
-
 ---
 
 ## 8. Submission Build Verification Summary
 
 - **Automated Test Suite**: **74 / 74 PASSED (100% Green)** across 6 core test suites.
-- **Frontend Production Build**: Vite bundle compiled cleanly in **1.31s**.
+- **Frontend Production Build**: Vite bundle compiled cleanly in **1.77s**.
 - **Windows Packaging**: NSIS installer packaged cleanly (**363.69 MB**).
 - **Standalone Backend**: `iris_backend.exe` bundled and verified.
 - **Offline Model**: Faster-Whisper base model (`model.bin`, 138.49 MB) included.
-- **Voice Output**: Intentionally disabled for V2.4 submission stability.
+- **GitHub Release**: Tag `v2.4.0` live with attached `IRIS-AI-V2.4-Setup.exe`.

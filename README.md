@@ -3,10 +3,12 @@
 
 ## Quick Start — IBM Submission
 
-IRIS AI V2.4 is packaged as a **production-ready Windows Installer** for the IBM SkillsBuild Hackathon.
+Download the ready-to-run Windows installer from the official **[IRIS AI V2.4 GitHub Release](https://github.com/ghostoftheravalhere/IRISAI/releases/tag/v2.4.0)**.
 
-- **Standalone Installer**: [`frontend/release/IRIS-AI-V2.4-Setup.exe`](docs/INSTALLATION_GUIDE.md) (**363.69 MB**)
-- **No Setup Required**: Bundled standalone Python 3.12 runtime, FastAPI backend, Faster-Whisper, MediaPipe, PyAutoGUI, and the offline `whisper-base` AI model. **0 Python/Node.js installation or terminal commands required by judges.**
+- **Standalone Installer Download**: [IRIS-AI-V2.4-Setup.exe](https://github.com/ghostoftheravalhere/IRISAI/releases/download/v2.4.0/IRIS-AI-V2.4-Setup.exe) (**363.69 MB**)
+- **Official GitHub Release Tag**: [`v2.4.0`](https://github.com/ghostoftheravalhere/IRISAI/releases/tag/v2.4.0)
+- **SHA256 Checksum**: `FA2EE4CA7ED5767EE0FF4B2FB86FF53DB7788484B6BD6EEDBAF0BAFDDCED9DA2`
+- **Zero Dependencies Required**: Bundled standalone Python 3.12 runtime, FastAPI backend, Faster-Whisper, MediaPipe, PyAutoGUI, and the offline `whisper-base` AI model. **0 Python/Node.js installation or terminal commands required by judges.**
 - **Judge Demonstration Guide**: See [`docs/INSTALLATION_GUIDE.md`](docs/INSTALLATION_GUIDE.md) for step-by-step installation, eye-gaze calibration, voice commands, and troubleshooting.
 
 ## Tech Stack
