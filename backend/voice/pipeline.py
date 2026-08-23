@@ -122,6 +122,19 @@ class VoiceCommandPipeline:
             # Evaluate through ConversationManager decision layer!
             decision = self._conversation_manager.process_utterance(normalized_text, voice_intent)
 
+            from backend.automation.app_resolver import app_resolver
+            res_target = app_resolver.resolve_app_target(voice_intent.target or text)
+
+            logger.info("\n" + "=" * 50)
+            logger.info("[VOICE RAW]\n%s", text)
+            logger.info("[INTENT]\nintent = %s", voice_intent.intent.value if voice_intent else "NO_INTENT")
+            logger.info("[ENTITY]\napplication_target = %s", voice_intent.target or "None")
+            logger.info("[ROUTE]\nselected action = DesktopAppResolver")
+            logger.info("[RESOLVER INPUT]\ntarget passed to DesktopAppResolver = %s", voice_intent.target or text)
+            logger.info("[RESOLVER RESULT]\nresolved application = %s\nmethod = %s\npath/protocol = %s", res_target.canonical_name, res_target.launch_type, res_target.target_path)
+            logger.info("[ACTION]\nactual Windows launch method = %s", res_target.launch_type)
+            logger.info("=" * 50 + "\n")
+
             logger.info("=== RUNTIME PIPELINE TRACE ===")
             logger.info("  RAW TRANSCRIPT       : '%s'", text)
             logger.info("  NORMALIZED TRANSCRIPT: '%s'", normalized_text)

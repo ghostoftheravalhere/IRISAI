@@ -358,16 +358,58 @@ class VoiceRecognitionService:
             )
             trailing_blocks = max(0, int(self._config.trailing_silence_blocks))
 
-            target_device_idx, _ = self._select_input_device(sd)
-            logger.info("VOICE_INIT: Selected audio input device index: %s", target_device_idx)
+            logger.info("[MIC] Initializing microphone")
+            logger.info("[MIC] Enumerating devices")
 
-            with sd.InputStream(
-                device=target_device_idx,
-                samplerate=self._config.sample_rate,
-                channels=1,
-                dtype="float32",
-                blocksize=block_size,
-            ) as stream:
+            target_device_idx, dev_name, actual_sr = self._enumerate_and_select_device(sd)
+            logger.info("[MIC] Default input device = %s (Index: %s)", dev_name, target_device_idx)
+            logger.info("[MIC] Sample rate = %d Hz (Target: %d Hz)", actual_sr, self._config.sample_rate)
+            logger.info("[MIC] Backend = sounddevice (PortAudio)")
+
+            stream = None
+            needs_resampling = (actual_sr != self._config.sample_rate)
+            actual_block_size = int(actual_sr * self._config.block_duration_seconds) if needs_resampling else block_size
+
+            # Attempt stream opening with fallback sample rates / device indices if required
+            try:
+                stream = sd.InputStream(
+                    device=target_device_idx,
+                    samplerate=actual_sr,
+                    channels=1,
+                    dtype="float32",
+                    blocksize=actual_block_size,
+                )
+                stream.start()
+            except Exception as stream_err:
+                logger.warning("[MIC] Primary stream opening failed on device #%s (%s): %s", target_device_idx, dev_name, stream_err)
+                # Fallback: Try device=None (system default) at 16000 Hz or native rate
+                try:
+                    actual_sr = 16000
+                    actual_block_size = block_size
+                    needs_resampling = False
+                    stream = sd.InputStream(
+                        device=None,
+                        samplerate=16000,
+                        channels=1,
+                        dtype="float32",
+                        blocksize=block_size,
+                    )
+                    stream.start()
+                    target_device_idx = sd.default.device[0]
+                    dev_name = "Default System Input"
+                except Exception as fallback_err:
+                    logger.exception("[MIC] All microphone InputStream creation attempts failed! %s", fallback_err)
+                    raise fallback_err
+
+            logger.info(
+                "[MIC] Microphone initialized successfully (Device: '%s' [#%s], SR: %d Hz, Resample: %s)",
+                dev_name,
+                target_device_idx,
+                actual_sr,
+                needs_resampling,
+            )
+
+            try:
                 with self._lock:
                     self._listening = True
                     self._microphone_status = "On"
@@ -391,21 +433,12 @@ class VoiceRecognitionService:
                         )
 
                     # ALWAYS read stream to drain OS hardware audio buffers continuously!
-                    block, overflowed = stream.read(block_size)
+                    block, overflowed = stream.read(actual_block_size)
                     if overflowed:
                         logger.warning("Microphone input overflow while listening.")
 
                     if is_tts_suppressed:
                         dropped_blocks_count += 1
-                        if dropped_blocks_count % 4 == 1:
-                            import os
-                            import threading
-                            logger.info(
-                                "[MIC AUDIO DROPPED] count=%d PID=%d THREAD=%d (TTS Active/Suppressed)",
-                                dropped_blocks_count,
-                                os.getpid(),
-                                threading.get_ident(),
-                            )
                         speech_blocks = []
                         silent_blocks = 0
                         trailing_buffer = []
@@ -423,10 +456,16 @@ class VoiceRecognitionService:
                         self._stop_event.wait(self._config.block_duration_seconds)
                         continue
 
-                    mono_block = np.asarray(block, dtype=np.float32).reshape(-1)
+                    raw_mono = np.asarray(block, dtype=np.float32).reshape(-1)
+                    if needs_resampling and raw_mono.size > 0:
+                        # Resample captured hardware audio to target 16000 Hz
+                        x_old = np.linspace(0, 1, len(raw_mono))
+                        x_new = np.linspace(0, 1, block_size)
+                        mono_block = np.interp(x_new, x_old, raw_mono).astype(np.float32)
+                    else:
+                        mono_block = raw_mono
 
                     if is_ptt_mode:
-                        # Push-to-Talk mode: bypass RMS gating and accumulate every block while PTT is active.
                         speech_blocks.append(mono_block.copy())
                         continue
 
@@ -468,6 +507,13 @@ class VoiceRecognitionService:
                         speech_blocks = []
                         silent_blocks = 0
                         trailing_buffer = []
+            finally:
+                if stream is not None:
+                    try:
+                        stream.stop()
+                        stream.close()
+                    except Exception:
+                        pass
         except Exception as exc:
             logger.exception("Voice recognition failed.")
             message = str(exc)
@@ -494,23 +540,44 @@ class VoiceRecognitionService:
             self._speech_output_manager = speech_output_manager
 
     @staticmethod
-    def _select_input_device(sd: Any) -> tuple[int | None, int]:
-        """Identify default or best valid system input device and sample rate."""
+    def _enumerate_and_select_device(sd: Any) -> tuple[int | None, str, int]:
+        """Enumerate all available audio input devices and return default index, name, and native sample rate."""
+        default_idx = None
+        dev_name = "Default Input Device"
+        sample_rate = 16000
         try:
             default_idx = sd.default.device[0]
             devices = sd.query_devices()
+            logger.info("[MIC] Total audio devices found: %d", len(devices))
+            for idx, dev in enumerate(devices):
+                max_in = dev.get("max_input_channels", 0)
+                if max_in > 0:
+                    name = dev.get("name", f"Device {idx}")
+                    sr = int(dev.get("default_samplerate", 16000))
+                    logger.info("[MIC] Input Device #%d: '%s' | Channels: %d | Default SR: %d", idx, name, max_in, sr)
+
             if default_idx is not None and 0 <= default_idx < len(devices):
                 info = devices[default_idx]
                 if info.get("max_input_channels", 0) > 0:
-                    sr = int(info.get("default_samplerate", 16000))
-                    return default_idx, sr
+                    dev_name = info.get("name", "Default Input Device")
+                    sample_rate = int(info.get("default_samplerate", 16000))
+                    return default_idx, dev_name, sample_rate
+
             for idx, dev in enumerate(devices):
                 if dev.get("max_input_channels", 0) > 0:
-                    sr = int(dev.get("default_samplerate", 16000))
-                    return idx, sr
-        except Exception:
-            pass
-        return None, 16000
+                    dev_name = dev.get("name", f"Device {idx}")
+                    sample_rate = int(dev.get("default_samplerate", 16000))
+                    return idx, dev_name, sample_rate
+        except Exception as exc:
+            logger.warning("[MIC] Failed during device enumeration: %s", exc)
+
+        return default_idx, dev_name, sample_rate
+
+    @staticmethod
+    def _select_input_device(sd: Any) -> tuple[int | None, int]:
+        """Identify default or best valid system input device and sample rate."""
+        idx, _, sr = VoiceRecognitionService._enumerate_and_select_device(sd)
+        return idx, sr
 
     def _should_capture(self) -> bool:
         """Return whether the current mode should capture microphone audio."""

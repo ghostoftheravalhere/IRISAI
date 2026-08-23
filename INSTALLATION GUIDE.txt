@@ -48,7 +48,7 @@ STEP 5: Double-click the "IRIS AI" Desktop shortcut.
 - Internet         : NONE (100% Offline Capability)
 - Release Tag      : v2.4.0
 - Installer Size   : 363.69 MB (381,357,000+ bytes)
-- SHA256 Checksum  : 9B52F78BA0D132353F905DAC9702169B86C7DF53FB8F8175E99BFFCF6ABE5F96
+- SHA256 Checksum  : 1C471642EC224AA691FDD79CBBFF0A04A43FC74F207835500A3DDD6D3564FE5D
 
 --------------------------------------------------
 3. FIRST-TIME EYE GAZE CALIBRATION GUIDE

@@ -71,8 +71,8 @@ class IntentParserService:
     matching ``Open Chrome``.
     """
 
-    _FUZZY_MIN_RATIO = 0.82
-    _TARGET_FUZZY_MIN_RATIO = 0.75
+    _FUZZY_MIN_RATIO = 0.85
+    _TARGET_FUZZY_MIN_RATIO = 0.85
 
     _OPEN_VERBS = ("open", "launch", "start", "opened", "run", "go to", "take me to", "navigate to", "switch to")
     _CLOSE_VERBS = ("close", "quit", "exit", "kill", "closed")
@@ -82,6 +82,8 @@ class IntentParserService:
         "word": ("microsoft word", "ms word", "word", "winword"),
         "excel": ("microsoft excel", "ms excel", "excel"),
         "powerpoint": ("microsoft powerpoint", "ms powerpoint", "powerpoint", "ppt"),
+        "teams": ("microsoft teams", "ms teams", "teams", "msteams", "teams meeting"),
+        "zoom": ("zoom workplace", "zoom", "zoom meeting", "zoom app"),
         "chrome": ("chrome", "google chrome", "chrom", "crow", "browser"),
         "notepad": ("notepad", "note pad", "editor"),
         "edge": ("edge", "microsoft edge", "ms edge", "msedge"),
@@ -310,14 +312,28 @@ class IntentParserService:
         return None
 
     def _resolve_target(self, remainder: str) -> str | None:
-        """Resolve an application/window target from the words after the verb."""
+        """Resolve an application/window target from the words after the verb using DesktopAppResolver."""
         if not remainder:
             return None
 
+        # 1. Check static app targets registry
         for target, synonyms in self._APP_TARGETS.items():
             if remainder in synonyms or any(self._contains_phrase(remainder, syn) for syn in synonyms):
                 return target
 
+        # 2. Consult dynamic DesktopAppResolver for installed Windows apps
+        try:
+            from backend.automation.app_resolver import app_resolver
+            app_key = app_resolver.resolve_app_key(remainder)
+            if app_key:
+                return app_key
+            target_obj = app_resolver.resolve_app_target(remainder)
+            if target_obj and target_obj.found:
+                return target_obj.app_key or remainder
+        except Exception:
+            pass
+
+        # 3. High-confidence fuzzy fallback matching only (ratio >= 0.85)
         best_target: str | None = None
         best_ratio = 0.0
         for target, synonyms in self._APP_TARGETS.items():

@@ -169,31 +169,19 @@ class AutomationDispatcher:
             return AutomationResult(success, intent, message)
 
     def _dispatch_open(self, voice_intent: VoiceIntent) -> AutomationResult:
-        """Open an application and return a user-facing status message."""
+        """Open an application using DesktopAppResolver and return a user-facing status message."""
         intent = voice_intent.intent
-        target = (voice_intent.target or "").strip().lower()
-        display = self._display_name(target) if target else None
-
-        if intent == VoiceIntentType.OPEN_CHROME or target == "chrome":
-            success = self._desktop_controller.open_chrome()
-            display = "Chrome"
-        elif intent == VoiceIntentType.OPEN_NOTEPAD or target == "notepad":
-            success = self._desktop_controller.open_notepad()
-            display = "Notepad"
-        elif target == "edge":
-            success = self._desktop_controller.open_edge()
-            display = "Edge"
-        elif target in ("settings", "setting", "windows settings", "system settings"):
-            success = self._desktop_controller.open_settings()
-            display = "Settings"
-        elif target:
-            success = self._desktop_controller.open_application(target)
-            display = target.title()
-        else:
-            logger.warning("Unsupported open application target: %s", target or intent.value)
+        target = (voice_intent.target or "").strip()
+        if not target:
+            logger.warning("Unsupported open application target: empty target")
             return AutomationResult(False, intent, "Unsupported application.")
 
-        message = f"{display} opened" if success else f"Failed to open {display}"
+        from backend.automation.app_resolver import app_resolver
+        resolved = app_resolver.resolve_app_target(target)
+        canonical = resolved.canonical_name if resolved and resolved.found else target.title()
+
+        success = self._desktop_controller.open_application(target)
+        message = f"{canonical} opened." if success else f"Sir, I couldn't find {canonical} on this computer."
         return AutomationResult(success, intent, message)
 
     def _dispatch_close(self, voice_intent: VoiceIntent) -> AutomationResult:
