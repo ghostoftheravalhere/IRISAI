@@ -59,7 +59,10 @@ IRISAI/
 ```
 main ← develop ← mehil / rehan / prit / dev
 ```
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/FUTURE_SCOPE.md](docs/FUTURE_SCOPE.md) for full details.
+
+## V2.4 Submission Scope Notice
+Two-way conversational voice interaction with spoken IRIS responses is planned as a future enhancement. The current V2.4 submission intentionally uses voice input with visual response feedback (`VOICE_OUTPUT_ENABLED=False`) to maximize system stability and prevent audio feedback/self-hearing during demonstration.
 
 ## Environment
 Copy `.env.example` to `.env` and fill in your `GEMINI_API_KEY`.

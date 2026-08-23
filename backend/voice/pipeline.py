@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from threading import RLock
 from typing import TYPE_CHECKING
 
+from backend.brain.conversation_manager import ConversationDecision, ConversationManager, DecisionType
 from backend.brain.fusion import MultimodalFusionEngine, PerceptionEvent
 from backend.brain.orchestrator import BrainOrchestrator, OrchestrationRequest
 from backend.automation.dispatcher import AutomationDispatcher, AutomationResult
@@ -40,8 +41,8 @@ class VoiceCommandPipeline:
     """Wire voice intents through the shared ActionEngine action pipeline.
 
     Flow:
-        transcript → TranscriptNormalizer → IntentParserService → ActionEngine gate → MultimodalFusionEngine
-        → BrainOrchestrator → AutomationDispatcher → DesktopController
+        transcript → TranscriptNormalizer → IntentParserService → ConversationManager → ActionEngine gate
+        → MultimodalFusionEngine → BrainOrchestrator → AutomationDispatcher → DesktopController
     """
 
     def __init__(
@@ -53,6 +54,7 @@ class VoiceCommandPipeline:
         event_bus: EventBus | None = None,
         orchestrator: BrainOrchestrator | None = None,
         fusion_engine: MultimodalFusionEngine | None = None,
+        conversation_manager: ConversationManager | None = None,
     ) -> None:
         self._intent_parser = intent_parser
         self._action_engine = action_engine
@@ -61,7 +63,20 @@ class VoiceCommandPipeline:
         self._event_bus = event_bus
         self._orchestrator = orchestrator
         self._fusion_engine = fusion_engine
+        self._conversation_manager = conversation_manager or ConversationManager(intent_parser=self._intent_parser)
+        self._voice_service: Any | None = None
+        self._speech_output_manager: Any | None = None
         self._lock = RLock()
+
+    def set_voice_service(self, voice_service: Any) -> None:
+        """Attach VoiceRecognitionService for active TTS state queries."""
+        with self._lock:
+            self._voice_service = voice_service
+
+    def set_speech_output_manager(self, speech_output_manager: Any) -> None:
+        """Attach SpeechOutputManager for automatic spoken assistant responses."""
+        with self._lock:
+            self._speech_output_manager = speech_output_manager
 
     def handle_transcript(self, transcript: str) -> tuple[str, str]:
         """Parse and execute a transcript; return (intent, execution_status)."""
@@ -80,8 +95,41 @@ class VoiceCommandPipeline:
                     transcript=text,
                 )
 
+            is_tts_playing = False
+            if self._voice_service is not None and getattr(self._voice_service, "is_tts_active", None) and self._voice_service.is_tts_active():
+                is_tts_playing = True
+            elif self._conversation_manager is not None and getattr(self._conversation_manager, "is_tts_active", None) and self._conversation_manager.is_tts_active():
+                is_tts_playing = True
+
+            if is_tts_playing:
+                logger.warning("[SAFETY GATE] VoiceCommandPipeline rejected execution: TTS is active!")
+                return VoicePipelineResult(
+                    intent="UNKNOWN",
+                    message="Suppressed during TTS.",
+                    success=False,
+                    transcript=text,
+                )
+
             normalized_text = self._normalizer.normalize(text)
             voice_intent = self._intent_parser.parse(normalized_text)
+            logger.info(
+                "INTENT: Voice intent parsed: %s (target: %s, rule: %s)",
+                voice_intent.intent.value,
+                voice_intent.target,
+                getattr(voice_intent, "rule_name", None),
+            )
+
+            # Evaluate through ConversationManager decision layer!
+            decision = self._conversation_manager.process_utterance(normalized_text, voice_intent)
+
+            logger.info("=== RUNTIME PIPELINE TRACE ===")
+            logger.info("  RAW TRANSCRIPT       : '%s'", text)
+            logger.info("  NORMALIZED TRANSCRIPT: '%s'", normalized_text)
+            logger.info("  PARSED INTENT        : %s", voice_intent.intent.value if voice_intent else "NO_INTENT")
+            logger.info("  PARSED TARGET        : %s", voice_intent.target)
+            logger.info("  CONVERSATION DECISION: %s", decision.decision_type.value)
+            logger.info("  FINAL ACTION         : %s", decision.intent.value if decision.execute_action else "NONE")
+            logger.info("================================")
 
             if self._event_bus:
                 self._event_bus.publish(
@@ -93,65 +141,77 @@ class VoiceCommandPipeline:
                     )
                 )
 
-            is_pending_dialogue = (
-                self._orchestrator is not None
-                and getattr(self._orchestrator, "_dialogue_manager", None) is not None
-                and getattr(self._orchestrator._dialogue_manager, "state", None) != "IDLE"
-            )
+            try:
+                if decision.decision_type != DecisionType.EXECUTE:
+                    if self._event_bus:
+                        self._event_bus.publish(
+                            AutomationExecutedEvent(
+                                intent=decision.decision_type.value,
+                                action=decision.decision_type.value,
+                                success=False,
+                                execution_status=decision.message,
+                            )
+                        )
+                    self._speak_response(decision.message)
+                    return VoicePipelineResult(
+                        intent=decision.decision_type.value,
+                        message=decision.message,
+                        success=False,
+                        transcript=text,
+                    )
 
-            if voice_intent.intent == VoiceIntentType.NO_INTENT and not is_pending_dialogue and self._orchestrator is None:
-                logger.info("Pipeline:")
-                logger.info("- ActionEngine request: skipped (NO_INTENT)")
+                executable_intent = VoiceIntent(
+                    intent=decision.intent,
+                    text=text,
+                    target=decision.target,
+                    query=decision.query,
+                    params=decision.params,
+                )
+
+                if not self._action_engine_allows(executable_intent):
+                    msg = "Action blocked by ActionEngine cooldown/pause."
+                    self._speak_response(msg)
+                    return VoicePipelineResult(
+                        intent=executable_intent.intent.value,
+                        message=msg,
+                        success=False,
+                        transcript=text,
+                    )
+
+                automation_result = self._automation_dispatcher.dispatch(executable_intent)
+                logger.info(
+                    "ACTION: Voice action executed: %s (success: %s, message: '%s')",
+                    automation_result.intent.value,
+                    automation_result.success,
+                    automation_result.message,
+                )
+                spoken_msg = self._format_spoken_response(executable_intent, automation_result.success, automation_result.message)
+                if self._event_bus:
+                    self._event_bus.publish(
+                        AutomationExecutedEvent(
+                            intent=automation_result.intent.value,
+                            action=automation_result.intent.value,
+                            success=automation_result.success,
+                            execution_status=spoken_msg,
+                        )
+                    )
+                self._speak_response(spoken_msg)
                 return VoicePipelineResult(
-                    intent=VoiceIntentType.NO_INTENT.value,
-                    message="Unknown command.",
+                    intent=automation_result.intent.value,
+                    message=spoken_msg,
+                    success=automation_result.success,
+                    transcript=text,
+                )
+            except Exception as exc:
+                logger.exception("Uncaught exception in VoiceCommandPipeline execution: %s", exc)
+                fallback_msg = "Sir, I couldn't complete that command."
+                self._speak_response(fallback_msg)
+                return VoicePipelineResult(
+                    intent="ERROR",
+                    message=fallback_msg,
                     success=False,
                     transcript=text,
                 )
-
-            if not self._action_engine_allows(voice_intent):
-                return VoicePipelineResult(
-                    intent=voice_intent.intent.value,
-                    message="Action blocked by ActionEngine cooldown/pause.",
-                    success=False,
-                    transcript=text,
-                )
-
-            if self._orchestrator is not None:
-                if self._fusion_engine is not None:
-                    pevent = PerceptionEvent(
-                        source="voice",
-                        intent=voice_intent.intent.value,
-                        confidence=1.0,
-                        target=voice_intent.target,
-                        raw_text=text,
-                        query=voice_intent.query,
-                        params=voice_intent.params,
-                    )
-                    fused = self._fusion_engine.ingest_event(pevent)
-                    orch_response = self._orchestrator.process_fusion_result(fused, source="voice")
-                else:
-                    orch_response = self._orchestrator.process_intent(
-                        OrchestrationRequest(source="voice", intent=voice_intent, raw_transcript=text)
-                    )
-                return VoicePipelineResult(
-                    intent=orch_response.intent,
-                    message=orch_response.message,
-                    success=orch_response.success,
-                    transcript=text,
-                )
-
-            automation_result = self._automation_dispatcher.dispatch(voice_intent)
-            if self._event_bus:
-                self._event_bus.publish(
-                    AutomationExecutedEvent(
-                        intent=automation_result.intent.value,
-                        action=automation_result.intent.value,
-                        success=automation_result.success,
-                        execution_status=automation_result.message,
-                    )
-                )
-            return self._to_pipeline_result(automation_result, text)
 
     def _action_engine_allows(self, voice_intent: VoiceIntent) -> bool:
         """Reuse the shared ActionEngine instance in the voice action pipeline.
@@ -176,11 +236,41 @@ class VoiceCommandPipeline:
         )
         return True
 
+    def _speak_response(self, text: str) -> None:
+        """Synthesize and speak assistant response via attached SpeechOutputManager."""
+        if not text:
+            return
+        som = getattr(self, "_speech_output_manager", None)
+        if som is not None and hasattr(som, "speak"):
+            try:
+                som.speak(text)
+            except Exception:
+                logger.exception("Failed to speak assistant response via SpeechOutputManager.")
+
     @staticmethod
-    def _to_pipeline_result(result: AutomationResult, transcript: str) -> VoicePipelineResult:
-        return VoicePipelineResult(
-            intent=result.intent.value,
-            message=result.message,
-            success=result.success,
-            transcript=transcript,
-        )
+    def _format_spoken_response(intent: VoiceIntent, success: bool, raw_message: str) -> str:
+        """Format natural human speech responses for completed actions."""
+        from backend.automation.app_resolver import app_resolver
+        canonical = app_resolver.get_canonical_name(intent.target or "") if intent.target else None
+        display_target = canonical or (intent.target or "").strip().title() or "Application"
+
+        if not success:
+            if raw_message and "couldn't find" in raw_message.lower():
+                return raw_message
+            return f"Sir, I couldn't find {display_target} on this computer."
+
+        intent_type = intent.intent
+
+        if intent_type in (VoiceIntentType.OPEN_APPLICATION, VoiceIntentType.OPEN_CHROME, VoiceIntentType.OPEN_NOTEPAD):
+            return f"{display_target} opened."
+
+        if intent_type in (VoiceIntentType.CLOSE_APPLICATION, VoiceIntentType.CLOSE_WINDOW):
+            return f"{display_target} closed."
+
+        if intent_type == VoiceIntentType.EXIT_APPLICATION:
+            return "Closing IRIS, sir."
+
+        if intent_type == VoiceIntentType.BROWSER_SEARCH:
+            return "Done, sir."
+
+        return raw_message

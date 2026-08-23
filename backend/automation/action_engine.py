@@ -19,6 +19,7 @@ _VOICE_INTENT_MAP: dict[VoiceIntentType, CanonicalAction] = {
     VoiceIntentType.OPEN_NOTEPAD: CanonicalAction.OPEN_APPLICATION,
     VoiceIntentType.CLOSE_APPLICATION: CanonicalAction.CLOSE_APPLICATION,
     VoiceIntentType.CLOSE_WINDOW: CanonicalAction.CLOSE_WINDOW,
+    VoiceIntentType.EXIT_APPLICATION: CanonicalAction.EXIT_APPLICATION,
     VoiceIntentType.MINIMIZE_WINDOW: CanonicalAction.MINIMIZE_WINDOW,
     VoiceIntentType.BROWSER_SEARCH: CanonicalAction.BROWSER_SEARCH,
     VoiceIntentType.HOTKEY: CanonicalAction.HOTKEY,
@@ -96,9 +97,10 @@ class ActionEngine:
                 target = (request.target_phrase or "").strip()
                 if not target:
                     return ActionResult(False, action, "No application/chat specified.")
-                success = self._desktop_controller.open_application(target.lower())
-                label = f"Chat '{target}'" if action == CanonicalAction.OPEN_CHAT else target.title()
-                msg = f"{label} opened" if success else f"Failed to open {label}"
+                success = self._desktop_controller.open_application(target)
+                from backend.automation.app_resolver import app_resolver
+                canonical = app_resolver.get_canonical_name(target) or target.title()
+                msg = f"{canonical} opened" if success else f"Sir, I couldn't find {canonical} on this computer."
                 return ActionResult(success, action, msg)
 
             if action == CanonicalAction.CLOSE_WINDOW:
@@ -115,6 +117,9 @@ class ActionEngine:
                 res = self._desktop_controller.close_application(target)
                 msg = f"{target.title()} closed" if res.success else f"Failed to close {target.title()}"
                 return ActionResult(res.success, action, msg)
+
+            if action == CanonicalAction.EXIT_APPLICATION:
+                return ActionResult(True, action, "Closing IRIS, sir.")
 
             if action == CanonicalAction.MINIMIZE_WINDOW:
                 success = self._desktop_controller.hotkey("win", "down")

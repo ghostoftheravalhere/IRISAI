@@ -50,16 +50,28 @@ class DesktopTool:
         text = params.get("text") or params.get("text_payload")
         keys = params.get("keys")
 
+        if action_str == "unknown_goal":
+            unrec_goal = str(params.get("goal") or target or "")
+            return ToolResult(False, f"I'm not sure which application or action you mean by '{unrec_goal}'. Could you please specify?", error_code="UNRECOGNIZED_GOAL")
+
         if action_str == "open_application" or action_str == "open_app":
             app_name = str(target or "").strip()
             if not app_name:
-                return ToolResult(False, "No application target specified")
+                return ToolResult(False, "No application target specified", error_code="TARGET_NOT_FOUND")
+
+            if not self._desktop_controller.is_application_supported(app_name):
+                logger.warning("DesktopTool rejected unverified target: '%s'", app_name)
+                return ToolResult(False, f"Application target '{app_name}' not found or unsupported", error_code="TARGET_NOT_FOUND")
+
             req = ActionRequest(action=CanonicalAction.OPEN_APPLICATION, target_phrase=app_name)
             res = self._action_engine.execute(req)
-            if task_state:
-                task_state.active_application = app_name
-                task_state.last_resolved_target = app_name
-            return ToolResult(res.success, res.message, data={"canonical_action": "OPEN_APPLICATION", "target": app_name})
+            if res.success:
+                if task_state:
+                    task_state.active_application = app_name
+                    task_state.last_resolved_target = app_name
+                return ToolResult(True, res.message, data={"canonical_action": "OPEN_APPLICATION", "target": app_name})
+            else:
+                return ToolResult(False, res.message, error_code="TARGET_NOT_FOUND", data={"target": app_name})
 
         if action_str == "click":
             x = params.get("x")
@@ -161,5 +173,8 @@ class DesktopTool:
             req = ActionRequest(action=CanonicalAction.MINIMIZE_WINDOW)
             res = self._action_engine.execute(req)
             return ToolResult(res.success, res.message, data={"canonical_action": "MINIMIZE_WINDOW"})
+
+        if action_str == "unknown_goal":
+            return ToolResult(False, "Sorry, I didn't understand that command.", error_code="UNKNOWN_COMMAND")
 
         return ToolResult(False, f"Unsupported desktop action '{action_str}'")

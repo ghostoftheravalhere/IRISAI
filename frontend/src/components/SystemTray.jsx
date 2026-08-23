@@ -14,7 +14,7 @@ export default function SystemTray({
     <div className={styles.trayBar}>
       <div className={styles.brandGroup}>
         <span className={styles.statusDot} />
-        <span className={styles.statusText}>IRIS V3 Active</span>
+        <span className={styles.statusText}>IRIS AI Active</span>
       </div>
 
       <div className={styles.trayActions}>

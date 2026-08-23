@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("irisAPI", {
   platform: process.platform,
   getBackendStatus: () => ipcRenderer.invoke("backend:get-status"),
   restartBackend: () => ipcRenderer.invoke("backend:restart"),
+  quitApp: () => ipcRenderer.invoke("app:quit"),
   onBackendStatusChange: (callback) => {
     const listener = (event, statusState) => {
       if (typeof callback === "function") {

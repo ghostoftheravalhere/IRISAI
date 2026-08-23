@@ -2,8 +2,16 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
+const removeCrossorigin = () => ({
+  name: "remove-crossorigin",
+  transformIndexHtml(html) {
+    return html.replace(/ crossorigin/g, "");
+  },
+});
+
 export default defineConfig({
-  plugins: [react()],
+  base: "./",
+  plugins: [react(), removeCrossorigin()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
@@ -11,12 +19,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: "127.0.0.1",
     proxy: {
-      // Proxy API calls to Python backend during development
       "/api": {
         target: "http://127.0.0.1:8000",
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api/, ""),
       },
     },
   },

@@ -1,4 +1,13 @@
-"""Multimodal Gaze + Voice Fusion Engine for deictic spatial expression resolution."""
+"""Multimodal Gaze + Voice + Screen + Context Fusion Engine for IRIS AI V4.
+
+Combines voice intent, live eye gaze, visible UI screen elements, active application context,
+and WorldModel state into a structured, unified decision proposal (MultimodalDecision).
+
+STRICT SAFETY BOUNDARY:
+MultimodalFusionEngine ONLY produces a structured MultimodalDecision proposal.
+It MUST NOT click, type, press keys, execute shell commands, or directly control Windows.
+Execution MUST route through PolicyEngine, ToolExecutor, DesktopTool, and ActionEngine.
+"""
 
 from __future__ import annotations
 
@@ -8,14 +17,17 @@ from threading import RLock
 import time
 from typing import Any, Sequence
 
-from backend.brain.fusion import FusionResult, FusionRule, PerceptionEvent
+from backend.brain.fusion import FusionResult, PerceptionEvent
+from backend.brain.world_model import world_model
 from backend.eye_tracking.gaze_service import EyeGazeService, GazeEstimate
+from backend.perception.screen_grounding_engine import ScreenElement, screen_grounding_engine
 from backend.perception.ui_automation_engine import AccessibilityElement, UIAutomationEngine
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 DEICTIC_PATTERN = re.compile(r"\b(this|that|here|there|this button|that field)\b", re.IGNORECASE)
+REFERENTIAL_PATTERN = re.compile(r"\b(it|the button|the message|the field|that window|that chat)\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -29,6 +41,41 @@ class GroundedSpatialTarget:
     confidence: float = 1.0
 
 
+@dataclass
+class MultimodalDecision:
+    """Structured decision outcome of multimodal evidence fusion."""
+
+    action: str  # CLICK | RIGHT_CLICK | DOUBLE_CLICK | COPY | PASTE | SELECT | TYPE | OPEN
+    target: str
+    target_type: str  # UI_ELEMENT | TEXT_REGION | WINDOW | PERSON
+    confidence: float
+    source_evidence: dict[str, float]  # {"voice": 0.35, "gaze": 0.30, "screen": 0.25, "context": 0.10}
+    application: str = "ActiveApp"
+    window: str = "ActiveWindow"
+    gaze_position: tuple[float, float] | None = None
+    screen_element_id: str | None = None
+    person_id: str | None = None
+    requires_confirmation: bool = False
+    reason: str = ""
+
+    def to_safe_dict(self) -> dict[str, Any]:
+        """Return dict representation without raw 128-dim biometric face embeddings."""
+        return {
+            "action": self.action,
+            "target": self.target,
+            "target_type": self.target_type,
+            "confidence": round(self.confidence, 2),
+            "source_evidence": {k: round(v, 2) for k, v in self.source_evidence.items()},
+            "application": self.application,
+            "window": self.window,
+            "gaze_position": self.gaze_position,
+            "screen_element_id": self.screen_element_id,
+            "person_id": self.person_id,
+            "requires_confirmation": self.requires_confirmation,
+            "reason": self.reason,
+        }
+
+
 class GazeGroundedSpatialResolver:
     """Resolves spatial target from live calibrated eye gaze and UI Automation elements."""
 
@@ -37,7 +84,7 @@ class GazeGroundedSpatialResolver:
         gaze_service: EyeGazeService | None = None,
         uia_engine: UIAutomationEngine | None = None,
         min_confidence_threshold: float = 0.45,
-        max_gaze_age_seconds: float = 0.5,
+        max_gaze_age_seconds: float = 1.5,
     ) -> None:
         self._gaze_service = gaze_service
         self._uia_engine = uia_engine or UIAutomationEngine()
@@ -85,10 +132,148 @@ class GazeGroundedSpatialResolver:
             elements = self._uia_engine.find_all()
             if not elements:
                 return None
-            # Return first matched element or fallback
             return elements[0]
         except Exception:
             return None
+
+
+class MultimodalFusionEngine:
+    """Engine fusing Voice Intent, Gaze, Screen UI Elements, Application, and WorldModel Context."""
+
+    def __init__(
+        self,
+        gaze_resolver: GazeGroundedSpatialResolver | None = None,
+        screen_grounder: Any | None = None,
+    ) -> None:
+        self._gaze_resolver = gaze_resolver or GazeGroundedSpatialResolver()
+        self._screen_grounder = screen_grounder or screen_grounding_engine
+        self._lock = RLock()
+
+    def fuse_multimodal_request(
+        self,
+        voice_goal: str,
+        custom_gaze: GazeEstimate | None = None,
+        custom_elements: list[ScreenElement] | None = None,
+    ) -> MultimodalDecision:
+        """Fuse multimodal evidence sources into a structured decision proposal."""
+        with self._lock:
+            snap = world_model.snapshot()
+            q_lower = voice_goal.strip().lower()
+
+            action_verb = self._parse_action_verb(q_lower)
+
+            # 1. Resolve Deictic / Spatial Target ("this", "that", "here")
+            is_deictic = bool(DEICTIC_PATTERN.search(q_lower))
+            is_referential = bool(REFERENTIAL_PATTERN.search(q_lower))
+
+            spatial_target = self._gaze_resolver.resolve_spatial_target(custom_gaze=custom_gaze)
+            gaze_pos = (spatial_target.x, spatial_target.y) if spatial_target else None
+
+            # Handle Stale / Unavailable Gaze for pure deictic commands ("Click this")
+            if is_deictic and spatial_target is None:
+                logger.warning("Multimodal fusion rejected: Stale or missing gaze for deictic request '%s'", voice_goal)
+                return MultimodalDecision(
+                    action=action_verb,
+                    target="Unknown Target",
+                    target_type="UI_ELEMENT",
+                    confidence=0.0,
+                    source_evidence={"voice": 0.35, "gaze": 0.0, "screen": 0.0, "context": 0.10},
+                    application=snap.application.active_app or "ActiveApp",
+                    window=snap.window.title or "ActiveWindow",
+                    requires_confirmation=True,
+                    reason="Gaze signal is unclear or stale. Please look directly at the target element.",
+                )
+
+            # 2. Resolve Pronoun / Referential Target ("it", "that chat")
+            target_phrase = q_lower
+            if is_referential and not is_deictic:
+                last_target = snap.ui_target.last_referenced_target
+                if last_target and last_target.get("name"):
+                    target_phrase = last_target["name"]
+            else:
+                target_phrase = re.sub(r"^(open|click|select|right click|double click|copy|paste)\s+(the|a|an)?\s*", "", q_lower, flags=re.IGNORECASE).strip()
+
+            # 3. Person Context Resolution ("his chat")
+            person_id = snap.person.person_id if snap.person else None
+            if "his chat" in q_lower or "her chat" in q_lower:
+                if snap.person and snap.person.name:
+                    target_phrase = f"{snap.person.name} chat"
+
+            # 4. Screen Grounding Search
+            ground_res = self._screen_grounder.ground_query(
+                target_phrase,
+                custom_elements=custom_elements,
+                gaze_estimate=custom_gaze,
+            )
+
+            # Handle Ambiguity / Conflicts
+            if ground_res.requires_clarification:
+                return MultimodalDecision(
+                    action=action_verb,
+                    target=target_phrase,
+                    target_type="UI_ELEMENT",
+                    confidence=0.50,
+                    source_evidence={"voice": 0.35, "gaze": 0.30, "screen": 0.20, "context": 0.10},
+                    application=snap.application.active_app or "ActiveApp",
+                    window=snap.window.title or "ActiveWindow",
+                    gaze_position=gaze_pos,
+                    person_id=person_id,
+                    requires_confirmation=True,
+                    reason=ground_res.clarification_message or "Multiple matching UI candidates detected.",
+                )
+
+            grounded_el = ground_res.target
+            target_name = grounded_el.name if grounded_el else target_phrase
+            elem_id = grounded_el.element_id if grounded_el else None
+
+            # Calculate Evidence Weights
+            voice_conf = 0.35
+            gaze_conf = 0.30 if (spatial_target is not None) else 0.0
+            screen_conf = 0.25 if (grounded_el is not None) else 0.05
+            context_conf = 0.10 if snap.application.active_app else 0.0
+
+            total_conf = min(1.0, voice_conf + gaze_conf + screen_conf + context_conf)
+
+            decision = MultimodalDecision(
+                action=action_verb,
+                target=target_name,
+                target_type="UI_ELEMENT",
+                confidence=total_conf,
+                source_evidence={"voice": voice_conf, "gaze": gaze_conf, "screen": screen_conf, "context": context_conf},
+                application=snap.application.active_app or "ActiveApp",
+                window=snap.window.title or "ActiveWindow",
+                gaze_position=gaze_pos,
+                screen_element_id=elem_id,
+                person_id=person_id,
+                requires_confirmation=False,
+                reason=f"Fused multimodal evidence for {action_verb} on '{target_name}'.",
+            )
+
+            # Update WorldModel snapshot history
+            if grounded_el:
+                world_model.update_ui_target(
+                    active_app=decision.application,
+                    active_window=decision.window,
+                    last_referenced_target=grounded_el.to_safe_dict(),
+                )
+
+            return decision
+
+    @staticmethod
+    def _parse_action_verb(text: str) -> str:
+        if "right click" in text:
+            return "RIGHT_CLICK"
+        if "double click" in text:
+            return "DOUBLE_CLICK"
+        if "copy" in text:
+            return "COPY"
+        if "paste" in text:
+            return "PASTE"
+        if "select" in text:
+            return "SELECT"
+        if "open" in text:
+            return "OPEN"
+        return "CLICK"
 
 
 class DeicticSpatialFusionRule:
@@ -106,20 +291,16 @@ class DeicticSpatialFusionRule:
         latest_voice = voice_events[-1]
         raw_text = latest_voice.raw_text or latest_voice.intent or ""
 
-        # Check if text contains a deictic reference ("this", "that", "here", "there")
         if not DEICTIC_PATTERN.search(raw_text):
             return None
 
-        # Non-spatial actions or fallbacks (e.g. "Copy this", "Close this", "Paste here") use referential context or current focus
         if latest_voice.intent in ("COPY", "PASTE", "CLOSE_APPLICATION", "CLOSE_WINDOW", "MINIMIZE_WINDOW", "SELECT_ALL"):
             return None
 
-        # Resolve gaze spatial target
         target = self._spatial_resolver.resolve_spatial_target()
         if target is None:
             if self._spatial_resolver._gaze_service is None:
                 return None
-            logger.warning("DeicticSpatialFusionRule: Spatial target unavailable for '%s'", raw_text)
             return FusionResult(
                 unified_intent="TARGET_UNAVAILABLE",
                 combined_confidence=1.0,
@@ -130,8 +311,7 @@ class DeicticSpatialFusionRule:
                 params={"error": "Spatial gaze target unavailable or low confidence"},
             )
 
-        # Build unified intent and parameters
-        action_verb = self._extract_action_verb(raw_text)
+        action_verb = MultimodalFusionEngine._parse_action_verb(raw_text)
         params = dict(latest_voice.params)
         params["gaze_x"] = target.x
         params["gaze_y"] = target.y
@@ -141,8 +321,6 @@ class DeicticSpatialFusionRule:
             params["target_role"] = target.role
 
         combined_confidence = min(1.0, (latest_voice.confidence + target.confidence) / 2.0)
-
-        logger.info("Fused deictic voice command '%s' with gaze target (x=%.3f, y=%.3f)", raw_text, target.x, target.y)
 
         return FusionResult(
             unified_intent=action_verb,
@@ -155,17 +333,5 @@ class DeicticSpatialFusionRule:
             params=params,
         )
 
-    @staticmethod
-    def _extract_action_verb(text: str) -> str:
-        text_lower = text.lower()
-        if "right click" in text_lower:
-            return "RIGHT_CLICK"
-        if "double click" in text_lower:
-            return "DOUBLE_CLICK"
-        if "type" in text_lower or "write" in text_lower:
-            return "TYPE_TEXT"
-        if "open" in text_lower:
-            return "OPEN_APPLICATION"
-        if "select" in text_lower:
-            return "START_SELECTING"
-        return "PRIMARY_CLICK"
+
+multimodal_fusion_engine = MultimodalFusionEngine()

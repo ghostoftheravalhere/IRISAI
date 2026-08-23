@@ -153,43 +153,103 @@ class VoiceRecognitionService:
         self._detected_intent: str | None = None
         self._execution_status = "Idle"
         self._error: str | None = None
+        self._tts_suppression_until: float = 0.0
+        self._tts_active: bool = False
         self._validate_config(self._config)
+
+    def set_tts_active(self, active: bool, duration_sec: float = 0.0) -> None:
+        """Mark TTS as active/inactive and set hardware audio suppression window."""
+        import time
+        with self._lock:
+            self._tts_active = active
+            if active:
+                self._tts_suppression_until = time.time() + duration_sec + 0.8
+                logger.info("[TTS] MICROPHONE SUPPRESSED (duration: %.2fs + 0.8s settle)", duration_sec)
+            else:
+                self._tts_suppression_until = max(self._tts_suppression_until, time.time() + 0.8)
+                logger.info("[TTS] MICROPHONE RESUMING (0.8s settling window active)")
+
+    def is_tts_active(self) -> bool:
+        """Return whether TTS output is currently playing or in post-speech settling period."""
+        import time
+        with self._lock:
+            if self._tts_active or (time.time() < self._tts_suppression_until):
+                return True
+            som = getattr(self, "_speech_output_manager", None)
+            return bool(som and getattr(som, "is_speaking", False))
+
+    def suppress_microphone_for_tts(self, duration_sec: float = 1.0) -> None:
+        """Temporarily suppress microphone capture and clear audio buffers during/after TTS."""
+        self.set_tts_active(True, duration_sec)
 
     def start(self, mode: ListenMode | str | None = None) -> VoiceRecognitionState:
         """Start listening in a background thread."""
+        old_thread: Thread | None = None
         with self._lock:
-            if self._listening:
-                return self.get_state()
-
             if mode is not None:
                 self._listen_mode = self._coerce_mode(mode)
 
+            # If already listening with an active thread, return state
+            if self._listening and self._thread is not None and self._thread.is_alive():
+                return self.get_state()
+
+            # If an old worker thread is shutting down, signal and join it first
+            if self._thread is not None and self._thread.is_alive():
+                self._stop_event.set()
+                old_thread = self._thread
+
+        if old_thread is not None and old_thread.is_alive():
+            old_thread.join(timeout=3.0)
+
+        with self._lock:
             self._stop_event.clear()
             self._ptt_active.clear()
             self._error = None
+            self._latest_transcript = None
+            self._detected_intent = None
             self._execution_status = "Starting"
             self._microphone_status = "Starting"
+            import os
+            import threading
+            logger.info(
+                "[MIC] PID=%d THREAD=%d INSTANCE=%d STARTING — Listen mode: %s",
+                os.getpid(),
+                threading.get_ident(),
+                id(self),
+                self._listen_mode.value,
+            )
             self._thread = Thread(target=self._run_loop, name="voice-recognition", daemon=True)
             self._thread.start()
             return self.get_state()
 
     def stop(self) -> VoiceRecognitionState:
         """Stop listening and wait briefly for the background thread to exit."""
-        thread: Thread | None
+        thread: Thread | None = None
+        import os
+        import threading
         with self._lock:
             self._stop_event.set()
             self._ptt_active.clear()
             thread = self._thread
 
         if thread is not None and thread.is_alive():
-            thread.join(timeout=2.0)
+            thread.join(timeout=3.0)
 
         with self._lock:
             self._listening = False
             self._microphone_status = "Off"
             self._execution_status = "Stopped"
             self._thread = None
+            self._stop_event.clear()
+            logger.info("[MIC] PID=%d THREAD=%d INSTANCE=%d STOPPED — Voice recognition stopped.", os.getpid(), threading.get_ident(), id(self))
             return self.get_state()
+
+    def shutdown(self) -> VoiceRecognitionState:
+        """Shutdown VoiceRecognitionService cleanly and close microphone stream."""
+        import os
+        import threading
+        logger.info("[MIC] PID=%d THREAD=%d INSTANCE=%d SHUTDOWN REQUESTED.", os.getpid(), threading.get_ident(), id(self))
+        return self.stop()
 
     def set_mode(self, mode: ListenMode | str) -> VoiceRecognitionState:
         """Switch between continuous and push-to-talk listening."""
@@ -243,6 +303,41 @@ class VoiceRecognitionService:
                 error=self._error,
             )
 
+    def get_diagnostics(self) -> dict[str, Any]:
+        """Return safe, detailed real-time hardware microphone diagnostic information."""
+        import time
+        dev_name = "Unknown Input Device"
+        default_input_idx = None
+        sample_rate = self._config.sample_rate
+        channels = 1
+        try:
+            sd, _ = self._load_audio_dependencies()
+            default_input_idx = sd.default.device[0]
+            devices = sd.query_devices()
+            if default_input_idx is not None and 0 <= default_input_idx < len(devices):
+                dev_info = devices[default_input_idx]
+                dev_name = dev_info.get("name", "Unknown Input Device")
+                sample_rate = int(dev_info.get("default_samplerate", self._config.sample_rate))
+                channels = int(dev_info.get("max_input_channels", 1))
+        except Exception:
+            pass
+
+        with self._lock:
+            thread_alive = self._thread is not None and self._thread.is_alive()
+            return {
+                "status": self._microphone_status,
+                "listening": self._listening,
+                "listen_mode": self._listen_mode.value,
+                "device_name": dev_name,
+                "device_index": default_input_idx,
+                "sample_rate": sample_rate,
+                "channels": channels,
+                "stream_open": self._listening and thread_alive,
+                "recognizer_running": thread_alive,
+                "last_error": self._error,
+                "tts_suppressed": time.time() < self._tts_suppression_until,
+            }
+
     def _run_loop(self) -> None:
         """Read microphone audio until stopped, transcribing utterances after silence."""
         try:
@@ -263,7 +358,11 @@ class VoiceRecognitionService:
             )
             trailing_blocks = max(0, int(self._config.trailing_silence_blocks))
 
+            target_device_idx, _ = self._select_input_device(sd)
+            logger.info("VOICE_INIT: Selected audio input device index: %s", target_device_idx)
+
             with sd.InputStream(
+                device=target_device_idx,
                 samplerate=self._config.sample_rate,
                 channels=1,
                 dtype="float32",
@@ -273,30 +372,56 @@ class VoiceRecognitionService:
                     self._listening = True
                     self._microphone_status = "On"
                     self._execution_status = self._status_for_mode()
+                logger.info("MICROPHONE_READY: Microphone input stream open.")
+                logger.info("LISTENING: Voice recognition active.")
 
                 speech_blocks: list[Any] = []
                 silent_blocks = 0
                 trailing_buffer: list[Any] = []
-
+                dropped_blocks_count = 0
                 while not self._stop_event.is_set():
+                    import time
+                    now = time.time()
                     with self._lock:
                         is_ptt_mode = (self._listen_mode == ListenMode.PUSH_TO_TALK)
+                        is_tts_suppressed = (
+                            self._tts_active
+                            or (now < self._tts_suppression_until)
+                            or (self._speech_output_manager and getattr(self._speech_output_manager, "is_speaking", False))
+                        )
 
-                    if not self._should_capture():
-                        if speech_blocks:
-                            logger.info("TRACE [2/11]: _run_loop() receives audio! PTT released and audio buffer flushed.")
-                            logger.info("TRACE [3/11]: Number of captured blocks = %d", len(speech_blocks))
-                            audio = np.concatenate(speech_blocks)
-                            self._handle_audio(audio)
-                            speech_blocks = []
-                            silent_blocks = 0
-                            trailing_buffer = []
-                        self._stop_event.wait(self._config.block_duration_seconds)
-                        continue
-
+                    # ALWAYS read stream to drain OS hardware audio buffers continuously!
                     block, overflowed = stream.read(block_size)
                     if overflowed:
                         logger.warning("Microphone input overflow while listening.")
+
+                    if is_tts_suppressed:
+                        dropped_blocks_count += 1
+                        if dropped_blocks_count % 4 == 1:
+                            import os
+                            import threading
+                            logger.info(
+                                "[MIC AUDIO DROPPED] count=%d PID=%d THREAD=%d (TTS Active/Suppressed)",
+                                dropped_blocks_count,
+                                os.getpid(),
+                                threading.get_ident(),
+                            )
+                        speech_blocks = []
+                        silent_blocks = 0
+                        trailing_buffer = []
+                        continue
+                    else:
+                        dropped_blocks_count = 0
+
+                    if not self._should_capture():
+                        if is_ptt_mode and speech_blocks:
+                            audio = np.concatenate(speech_blocks)
+                            self._handle_audio(audio)
+                        speech_blocks = []
+                        silent_blocks = 0
+                        trailing_buffer = []
+                        self._stop_event.wait(self._config.block_duration_seconds)
+                        continue
 
                     mono_block = np.asarray(block, dtype=np.float32).reshape(-1)
 
@@ -335,10 +460,11 @@ class VoiceRecognitionService:
                         if len(speech_blocks) >= min_blocks_required:
                             audio = np.concatenate(speech_blocks)
                             self._handle_audio(audio)
-                        else:
-                            with self._lock:
-                                if self._latest_transcript is None:
-                                    self._execution_status = "Empty speech"
+                        with self._lock:
+                            if self._execution_status != "Error" or "Microphone" not in (self._error or ""):
+                                self._execution_status = self._status_for_mode()
+                                if "Microphone" not in (self._error or ""):
+                                    self._error = None
                         speech_blocks = []
                         silent_blocks = 0
                         trailing_buffer = []
@@ -362,10 +488,41 @@ class VoiceRecognitionService:
                 self._ptt_active.clear()
                 self._thread = None
 
+    def set_speech_output_manager(self, speech_output_manager: Any) -> None:
+        """Attach SpeechOutputManager to mute capture during TTS output."""
+        with self._lock:
+            self._speech_output_manager = speech_output_manager
+
+    @staticmethod
+    def _select_input_device(sd: Any) -> tuple[int | None, int]:
+        """Identify default or best valid system input device and sample rate."""
+        try:
+            default_idx = sd.default.device[0]
+            devices = sd.query_devices()
+            if default_idx is not None and 0 <= default_idx < len(devices):
+                info = devices[default_idx]
+                if info.get("max_input_channels", 0) > 0:
+                    sr = int(info.get("default_samplerate", 16000))
+                    return default_idx, sr
+            for idx, dev in enumerate(devices):
+                if dev.get("max_input_channels", 0) > 0:
+                    sr = int(dev.get("default_samplerate", 16000))
+                    return idx, sr
+        except Exception:
+            pass
+        return None, 16000
+
     def _should_capture(self) -> bool:
         """Return whether the current mode should capture microphone audio."""
+        import time
+        now = time.time()
         with self._lock:
+            if now < self._tts_suppression_until:
+                return False
             mode = self._listen_mode
+            som = getattr(self, "_speech_output_manager", None)
+            if som is not None and getattr(som, "is_speaking", False):
+                return False
         if mode == ListenMode.CONTINUOUS:
             return True
         return self._ptt_active.is_set()
@@ -378,6 +535,16 @@ class VoiceRecognitionService:
 
     def _handle_audio(self, audio: Any) -> None:
         """Transcribe captured audio and dispatch the transcript callback."""
+        import os
+        import threading
+        if self.is_tts_active():
+            logger.info(
+                "[STT FIREWALL] ABORTING AUDIO PROCESSING — TTS is active or suppressed! (PID=%d THREAD=%d)",
+                os.getpid(),
+                threading.get_ident(),
+            )
+            return
+
         raw_wav_file = "c:/Users/Meet Raval/IRISAI/live_debug_raw.wav"
         prep_wav_file = "c:/Users/Meet Raval/IRISAI/live_debug_prep.wav"
         try:
@@ -408,6 +575,7 @@ class VoiceRecognitionService:
             with self._lock:
                 vad_active = (self._listen_mode == ListenMode.PUSH_TO_TALK)
 
+            logger.info("AUDIO_CAPTURE: Audio utterance captured (duration: %.2fs, peak: %.4f)", duration, raw_peak)
             logger.info("=== LIVE UTTERANCE AUDIT LOG ===")
             logger.info("  Raw Microphone RMS   : %.6f", raw_rms)
             logger.info("  Raw Microphone Peak  : %.6f", raw_peak)
@@ -434,6 +602,31 @@ class VoiceRecognitionService:
             t0 = time.time()
             transcript = self._transcribe(audio)
             latency_ms = (time.time() - t0) * 1000.0
+            logger.info("TRANSCRIPTION: Raw transcript: '%s' (latency: %.1fms)", transcript, latency_ms)
+
+            # HARD SAFETY GATE 1: Discard transcript if TTS is currently active or in settling window
+            if self.is_tts_active():
+                import os
+                import threading
+                logger.warning(
+                    "[FALSE TRANSCRIPT CANDIDATE REJECTED] TEXT='%s' TTS_ACTIVE=True STATE='%s' PID=%d THREAD=%d",
+                    transcript,
+                    self._execution_status,
+                    os.getpid(),
+                    threading.get_ident(),
+                )
+                with self._lock:
+                    self._latest_transcript = None
+                    self._execution_status = self._status_for_mode()
+                return
+
+            # HARD SAFETY GATE 2: Discard transcript if it matches IRIS assistant response text
+            if self._is_iris_response_text(transcript):
+                logger.warning("[STT FIREWALL] DISCARD TRANSCRIPT — Speech matches IRIS assistant response: '%s'", transcript)
+                with self._lock:
+                    self._latest_transcript = None
+                    self._execution_status = self._status_for_mode()
+                return
 
             if self._event_bus:
                 self._event_bus.publish(
@@ -463,26 +656,37 @@ class VoiceRecognitionService:
 
         detected_intent = "NO_INTENT"
         execution_status = "Transcript captured."
-        if self._on_transcript is not None:
-            try:
-                detected_intent, execution_status = self._on_transcript(transcript)
-            except Exception:
-                logger.exception("Voice transcript handler failed.")
-                execution_status = "Intent handling failed."
+        try:
+            if self._on_transcript is not None:
+                try:
+                    detected_intent, execution_status = self._on_transcript(transcript)
+                except Exception as exc:
+                    logger.exception("Voice transcript handler failed: %s", exc)
+                    execution_status = "Intent handling failed."
+        finally:
+            logger.info("  Raw Transcript       : '%s'", transcript)
+            logger.info("  Final Intent         : %s", detected_intent)
+            logger.info("  Execution Status     : %s", execution_status)
+            logger.info("================================")
 
-        logger.info("  Raw Transcript       : '%s'", transcript)
-        logger.info("  Final Intent         : %s", detected_intent)
-        logger.info("  Execution Status     : %s", execution_status)
-        logger.info("================================")
-
-        with self._lock:
-            self._latest_transcript = transcript
-            self._detected_intent = detected_intent
-            self._execution_status = execution_status
-            self._error = None
+            with self._lock:
+                self._latest_transcript = transcript
+                self._detected_intent = detected_intent
+                self._execution_status = self._status_for_mode()
+                self._error = None
 
     def _transcribe(self, audio: Any) -> str:
         """Run Faster-Whisper transcription for one utterance."""
+        import os
+        import threading
+        if self.is_tts_active():
+            logger.info(
+                "[STT FIREWALL] ABORTING WHISPER TRANSCRIBE — TTS is active or suppressed! (PID=%d THREAD=%d)",
+                os.getpid(),
+                threading.get_ident(),
+            )
+            return ""
+
         import numpy as np
 
         model = self._load_model()
@@ -566,6 +770,34 @@ class VoiceRecognitionService:
         with self._lock:
             self._model = model
             return self._model
+
+    @staticmethod
+    def _is_iris_response_text(text: str) -> bool:
+        """Check if transcribed speech matches any canonical IRIS assistant response phrase."""
+        if not text:
+            return False
+        norm = text.lower().strip()
+        canonical_phrases = (
+            "could you say it another way",
+            "understand that command",
+            "couldn't understand that command",
+            "which browser would you like me to open",
+            "chrome opened",
+            "chrome closed",
+            "notepad opened",
+            "notepad closed",
+            "camera opened",
+            "camera closed",
+            "done, sir",
+            "couldn't complete that action",
+            "couldn't complete that command",
+            "response audio unavailable",
+            "action blocked by actionengine",
+        )
+        for phrase in canonical_phrases:
+            if phrase in norm or norm in phrase:
+                return True
+        return False
 
     @staticmethod
     def _empty_intent() -> str:

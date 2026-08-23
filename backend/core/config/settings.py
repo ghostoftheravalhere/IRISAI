@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     VOICE_MODEL_PATH: str | None = None
     MIC_SAMPLE_RATE: int = 16000
     VOICE_LISTEN_MODE: str = "continuous"
+    VOICE_OUTPUT_ENABLED: bool = False  # V2.4 Submission Stability Mode (Voice Input Active, Spoken Output Disabled)
     ENABLE_AGC: bool = True
     AUDIO_PREPROCESSOR_ENABLED: bool = True
     AGC_ENABLED: bool = True

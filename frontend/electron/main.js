@@ -31,12 +31,41 @@ function createWindow() {
   // Remove default menu bar
   mainWindow.setMenuBarVisibility(false);
 
-  if (isDev) {
-    mainWindow.loadURL("http://localhost:5173");
+  if (isDev && process.env.VITE_DEV_SERVER_URL !== "false") {
+    const loadDevServer = async (retries = 10) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          await mainWindow.loadURL("http://127.0.0.1:5173");
+          return;
+        } catch (err) {
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      }
+      console.log("[ELECTRON] Dev server unreachable after retries, loading dist/index.html fallback...");
+      mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+    };
+    loadDevServer();
     mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
   }
+
+  mainWindow.webContents.on("did-fail-load", (event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[ELECTRON RENDERER FAIL] ${errorCode}: ${errorDescription} (${validatedURL})`);
+    if (validatedURL.includes("5173")) {
+      console.log("[ELECTRON] Dev server load failed, loading dist/index.html fallback...");
+      mainWindow.loadFile(path.join(__dirname, "../dist/index.html")).catch(() => {
+        const errorHtml = `
+          <html><body style="background:#0a0a0f;color:#ef4444;font-family:sans-serif;padding:3rem;text-align:center;">
+            <h2>IRIS AI — Interface Load Error</h2>
+            <p style="color:#9ca3af;">Frontend dev server and dist bundle unavailable. Run: npm run dev</p>
+            <button onclick="location.reload()" style="background:#2563eb;color:#fff;border:none;padding:0.6rem 1.2rem;border-radius:6px;cursor:pointer;margin-top:1rem;">Retry Load</button>
+          </body></html>
+        `;
+        mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
+      });
+    }
+  });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -55,6 +84,16 @@ ipcMain.handle("backend:restart", async () => {
   } catch (err) {
     return { success: false, error: err.message };
   }
+});
+
+ipcMain.handle("app:quit", async () => {
+  console.log("[ELECTRON] Self-close IPC invoked ('Close IRIS'); closing application gracefully...");
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.close();
+  } else {
+    app.quit();
+  }
+  return { success: true };
 });
 
 backendManager.onStatusChange = (statusState) => {

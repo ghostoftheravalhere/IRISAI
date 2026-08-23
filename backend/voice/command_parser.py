@@ -45,7 +45,9 @@ class VoiceIntentType(str, Enum):
     SELECT_ALL = "SELECT_ALL"
     MINIMIZE_WINDOW = "MINIMIZE_WINDOW"
     CLOSE_WINDOW = "CLOSE_WINDOW"
+    EXIT_APPLICATION = "EXIT_APPLICATION"
     TAKE_SCREENSHOT = "TAKE_SCREENSHOT"
+    GREETING = "GREETING"
     NO_INTENT = "NO_INTENT"
 
 
@@ -77,10 +79,16 @@ class IntentParserService:
     _MINIMIZE_VERBS = ("minimize", "minimise")
 
     _APP_TARGETS: dict[str, tuple[str, ...]] = {
+        "word": ("microsoft word", "ms word", "word", "winword"),
+        "excel": ("microsoft excel", "ms excel", "excel"),
+        "powerpoint": ("microsoft powerpoint", "ms powerpoint", "powerpoint", "ppt"),
         "chrome": ("chrome", "google chrome", "chrom", "crow", "browser"),
         "notepad": ("notepad", "note pad", "editor"),
         "edge": ("edge", "microsoft edge", "ms edge", "msedge"),
+        "calculator": ("calculator", "calc", "windows calculator"),
+        "explorer": ("explorer", "file explorer", "files", "my computer"),
         "settings": ("settings", "setting", "windows settings", "system settings", "control panel", "options"),
+        "camera": ("camera", "windows camera", "webcam app", "photo booth"),
         "vscode": ("vscode", "vs code", "visual studio code"),
         "spotify": ("spotify", "music player"),
         "taskmgr": ("taskmgr", "task manager"),
@@ -117,6 +125,29 @@ class IntentParserService:
             "capture screen",
             "screen shot",
             "take a screenshot",
+        ),
+        VoiceIntentType.EXIT_APPLICATION: (
+            "close iris",
+            "exit iris",
+            "quit iris",
+            "close yourself",
+            "exit yourself",
+            "shutdown iris",
+            "shut down iris",
+        ),
+        VoiceIntentType.GREETING: (
+            "hi iris",
+            "hello iris",
+            "hey iris",
+            "good morning iris",
+            "good evening iris",
+            "hi",
+            "hello",
+            "hey",
+            "good morning",
+            "good evening",
+            "greetings",
+            "greetings iris",
         ),
     }
 
@@ -328,7 +359,7 @@ class IntentParserService:
     def _normalize(text: str) -> str:
         """Normalize speech text for stable rule matching."""
         normalized = text.lower().strip()
-        normalized = re.sub(r"\b(um|uh|please|okay|ok|hey|iris|can you|could you|i want to|i'd like to)\b", " ", normalized)
+        normalized = re.sub(r"\b(um|uh|please|okay|ok|can you|could you|i want to|i'd like to)\b", " ", normalized)
         normalized = re.sub(r"\b(take me to|go to|navigate to|switch to)\b", "open", normalized)
         normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
         return re.sub(r"\s+", " ", normalized).strip()

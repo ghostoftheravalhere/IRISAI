@@ -86,6 +86,22 @@ async def voice_stop(request: Request) -> dict[str, object]:
     return _serialize(state, message="Voice recognition stopped.")
 
 
+class SpeakRequest(BaseModel):
+    """Request body for speaking text via TTS."""
+
+    text: str = Field(description="Text to synthesize and speak aloud")
+
+
+@router.post("/speak")
+async def voice_speak(request: Request, body: SpeakRequest) -> dict[str, object]:
+    """Synthesize and speak text output using native TTS engine."""
+    speech_mgr = getattr(request.app.state, "speech_output_manager", None)
+    if speech_mgr is not None:
+        duration = speech_mgr.speak(body.text)
+        return {"success": True, "text": body.text, "duration_ms": duration}
+    return {"success": False, "error": "Speech manager unattached"}
+
+
 @router.post("/mode", response_model=VoiceStatusResponse)
 async def voice_set_mode(request: Request, body: VoiceModeRequest) -> dict[str, object]:
     """Switch between continuous and push-to-talk modes."""
@@ -118,3 +134,37 @@ async def voice_telemetry(request: Request) -> dict[str, object]:
     if not hasattr(request.app.state, "voice_telemetry"):
         raise HTTPException(status_code=503, detail="Voice telemetry service not initialized.")
     return request.app.state.voice_telemetry.get_summary()
+
+
+@router.get("/diagnostics")
+async def voice_diagnostics(request: Request) -> dict[str, object]:
+    """Return detailed hardware microphone diagnostic metadata."""
+    voice = request.app.state.voice
+    if hasattr(voice, "get_diagnostics"):
+        return voice.get_diagnostics()
+    return {"status": "UNAVAILABLE"}
+
+
+@router.post("/retry", response_model=VoiceStatusResponse)
+async def voice_retry(request: Request) -> dict[str, object]:
+    """Safely stop, clear stale streams/buffers, and restart microphone recognition."""
+    voice = request.app.state.voice
+    voice.stop()
+    import time
+    time.sleep(0.1)
+    state = voice.start()
+    return _serialize(state, message="Microphone recognition restarted.")
+
+
+@router.post("/shutdown")
+async def voice_shutdown(request: Request) -> dict[str, object]:
+    """Shutdown voice recognition, cancel active/queued TTS, and release audio resources."""
+    speech_mgr = getattr(request.app.state, "speech_output_manager", None)
+    if speech_mgr is not None and hasattr(speech_mgr, "shutdown"):
+        speech_mgr.shutdown()
+
+    voice = request.app.state.voice
+    if hasattr(voice, "shutdown"):
+        voice.shutdown()
+
+    return {"success": True, "message": "Voice engine shut down cleanly."}

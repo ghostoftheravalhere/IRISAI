@@ -39,6 +39,11 @@ _APP_PROCESS_MAP: dict[str, dict[str, str]] = {
         "darwin": "System Settings",
         "linux": "gnome-control-center",
     },
+    "camera": {
+        "win": "WindowsCamera.exe",
+        "darwin": "Camera",
+        "linux": "cheese",
+    },
 }
 
 _GRACEFUL_CLOSE_TIMEOUT_SECONDS = 2.0
@@ -126,30 +131,64 @@ class DesktopController:
             logger.exception("Failed to launch Settings from voice command.")
             return False
 
-    def open_application(self, application_name: str) -> bool:
-        """Open an application by name or platform mapping."""
-        app = (application_name or "").strip().lower()
-        if app in ("chrome", "google chrome"):
-            return self.open_chrome()
-        if app in ("notepad", "note pad"):
-            return self.open_notepad()
-        if app in ("edge", "microsoft edge", "ms edge"):
-            return self.open_edge()
-        if app in ("settings", "setting", "windows settings", "system settings"):
-            return self.open_settings()
-
+    def open_camera(self) -> bool:
+        """Launch Windows Camera application via ms-camera URI protocol."""
         try:
             if sys.platform.startswith("win"):
-                subprocess.Popen(["cmd", "/c", "start", "", app])
+                subprocess.Popen(["cmd", "/c", "start", "microsoft.windows.camera:"])
             elif sys.platform == "darwin":
-                subprocess.Popen(["open", "-a", app])
+                subprocess.Popen(["open", "-a", "Photo Booth"])
             else:
-                subprocess.Popen([app])
-            logger.info("Voice automation launched application '%s'.", app)
+                subprocess.Popen(["cheese"])
+            logger.info("Voice automation launched Camera application.")
             return True
         except Exception:
-            logger.exception("Failed to launch application '%s'.", app)
+            logger.exception("Failed to launch Camera application from voice command.")
             return False
+
+    _SUPPORTED_APPS: dict[str, tuple[str, ...]] = {
+        "chrome": ("chrome", "google chrome", "chrom", "browser"),
+        "notepad": ("notepad", "note pad", "editor"),
+        "edge": ("edge", "microsoft edge", "ms edge", "msedge"),
+        "settings": ("settings", "setting", "windows settings", "system settings", "control panel"),
+        "camera": ("camera", "windows camera", "webcam app", "photo booth"),
+        "vscode": ("vscode", "vs code", "visual studio code", "code"),
+        "whatsapp": ("whatsapp", "whats app"),
+        "spotify": ("spotify", "music player"),
+        "calculator": ("calculator", "calc"),
+        "explorer": ("explorer", "file explorer", "files", "my computer"),
+        "taskmgr": ("taskmgr", "task manager"),
+        "cmd": ("cmd", "command prompt", "terminal"),
+    }
+
+    def is_application_supported(self, application_name: str) -> bool:
+        """Validate whether an application target phrase matches a supported system app mapping."""
+        from backend.automation.app_resolver import app_resolver
+        return app_resolver.resolve_app_key(application_name) is not None
+
+    def open_application(self, application_name: str) -> bool:
+        """Open an application by name via DesktopAppResolver cleanly and safely."""
+        app = (application_name or "").strip()
+        if not app:
+            logger.warning("open_application rejected: Empty application name.")
+            return False
+
+        if app.startswith(("http://", "https://")):
+            try:
+                import webbrowser
+                webbrowser.open(app)
+                return True
+            except Exception:
+                return False
+
+        from backend.automation.app_resolver import app_resolver
+        target = app_resolver.resolve_app_target(app)
+        if not target.found:
+            logger.warning("[APP LAUNCH] Application '%s' not found on system: %s", app, target.error_message)
+            return False
+
+        success, msg = app_resolver.launch(target)
+        return success
 
     def close_window(self) -> bool:
         """Close the currently focused window (Alt+F4)."""

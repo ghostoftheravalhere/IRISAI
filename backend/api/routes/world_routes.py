@@ -78,3 +78,10 @@ def get_desktop_world_history():
         }
         for st in history
     ]
+
+
+@router.get("/snapshot")
+def get_world_model_snapshot():
+    """Get unified WorldModel snapshot (application, window, target, person)."""
+    from backend.brain.world_model import world_model
+    return world_model.snapshot().to_dict()

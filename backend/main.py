@@ -17,15 +17,19 @@ else:
 import uvicorn
 from backend.api.app import create_app
 from backend.config.settings import settings
+from backend.utils.logger import get_logger
 
+logger = get_logger(__name__)
 app = create_app()
 
 if __name__ == "__main__":
-    is_frozen = getattr(sys, "frozen", False)
+    import os
+    logger.info("[MAIN] Starting IRIS AI Backend in single-process mode (PID=%d)", os.getpid())
     uvicorn.run(
-        app if is_frozen else "backend.main:app",
+        app,
         host=settings.API_HOST,
         port=settings.API_PORT,
-        reload=settings.DEBUG if not is_frozen else False,
+        reload=False,
+        workers=1,
         log_level="debug" if settings.DEBUG else "info",
     )

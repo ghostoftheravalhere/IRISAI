@@ -5,6 +5,7 @@ from typing import Any
 
 from backend.agent.task_state import Plan, PlanStep, TaskState
 from backend.agent.tool_registry import ToolDescriptor, ToolResult
+from backend.brain.multimodal_fusion import multimodal_fusion_engine
 from backend.brain.reasoning.provider import PlannerProvider
 from backend.utils.logger import get_logger
 from backend.voice.command_parser import IntentParserService, VoiceIntentType
@@ -157,6 +158,12 @@ class Planner:
         goal_lower = re.sub(r"^iris,?\s*", "", goal.lower().strip(), flags=re.IGNORECASE).strip()
         steps: list[PlanStep] = []
 
+        # 0. Conversational Greetings
+        parsed_intent = self._intent_parser.parse(goal)
+        if parsed_intent.intent == VoiceIntentType.GREETING or any(phrase in goal_lower for phrase in ("hi iris", "hello iris", "hey iris", "good morning", "good evening", "greetings")) or goal_lower in ("hi", "hello", "hey"):
+            steps.append(PlanStep(1, "identity_tool", "Conversational greeting", {"action": "greet"}))
+            return Plan(goal=goal, steps=steps)
+
         # 0. Conversational Identity Subsystem Queries
         if any(phrase in goal_lower for phrase in ("who is this", "who is that", "do you know him", "do you know her")):
             steps.append(PlanStep(1, "identity_tool", "Query current person identity", {"action": "query_current_person"}))
@@ -179,14 +186,24 @@ class Planner:
                 steps.append(PlanStep(1, "identity_tool", f"Forget person {name}", {"action": "forget_person", "name": name}))
             return Plan(goal=goal, steps=steps)
 
+        # 0. Multimodal Grounding & Deictic Intent Resolution
+        if any(term in goal_lower for term in ("this", "that", "here", "it", "his chat", "her chat", "second one", "first one")) or "right click" in goal_lower or "copy" in goal_lower:
+            decision = multimodal_fusion_engine.fuse_multimodal_request(goal)
+            action_name = decision.action.lower()
+            if action_name == "right_click":
+                steps.append(PlanStep(1, "desktop_tool", f"Right click grounded target '{decision.target}'", {"action": "right_click", "target": decision.target}))
+            elif action_name == "copy":
+                steps.append(PlanStep(1, "desktop_tool", f"Copy grounded target '{decision.target}'", {"action": "copy"}))
+            elif action_name == "paste":
+                steps.append(PlanStep(1, "desktop_tool", "Paste payload", {"action": "paste"}))
+            else:
+                steps.append(PlanStep(1, "desktop_tool", f"Click grounded UI element '{decision.target}'", {"action": "click_grounded", "target": decision.target}))
+            return Plan(goal=goal, steps=steps)
+
         # 0. Conversational UI Screen Grounding Queries
         if any(phrase in goal_lower for phrase in ("find the", "find search", "find send", "where is the")):
             target_name = re.sub(r"^(find|where is)\s+(the|a|an)?\s*", "", goal_lower).strip()
             steps.append(PlanStep(1, "desktop_tool", f"Find UI element '{target_name}'", {"action": "find_element", "target": target_name}))
-            return Plan(goal=goal, steps=steps)
-
-        if any(term in goal_lower for term in ("this", "that", "here")) and any(cmd in goal_lower for cmd in ("click", "select", "right click")):
-            steps.append(PlanStep(1, "desktop_tool", f"Gaze spatial click '{goal_lower}'", {"action": "spatial_click", "target": goal_lower}))
             return Plan(goal=goal, steps=steps)
 
         if "visible" in goal_lower or "what buttons" in goal_lower or "what is that button" in goal_lower:
@@ -353,9 +370,9 @@ class Planner:
                 steps.append(PlanStep(1, "desktop_tool", "Minimize active window", {"action": "minimize_window"}))
                 return Plan(goal=goal, steps=steps)
 
-        # 9. Default single-step desktop UI action
-        clean_target = re.sub(r"^(open|launch|start)\s+", "", goal_lower, flags=re.IGNORECASE).strip()
-        steps.append(PlanStep(1, "desktop_tool", f"Open application '{clean_target}'", {"action": "open_application", "target": clean_target}))
+        # 9. Unrecognized goal safety fallback (DO NOT convert arbitrary text into open_application!)
+        logger.info("Goal '%s' not recognized as a valid application or command. Returning safe clarification.", goal)
+        steps.append(PlanStep(1, "desktop_tool", "Clarify unrecognized goal", {"action": "unknown_goal", "goal": goal}))
         return Plan(goal=goal, steps=steps)
 
     def evaluate_step_result(

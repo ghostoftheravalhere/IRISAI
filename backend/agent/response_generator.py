@@ -17,7 +17,15 @@ class ResponseGenerator:
     @staticmethod
     def generate_final_response(task_state: TaskState) -> str:
         """Synthesize final response for completed or failed TaskState."""
+        if task_state.history:
+            _, last_res = task_state.history[-1]
+            if isinstance(last_res, ToolResult):
+                if last_res.error_code == "UNKNOWN_COMMAND" or "didn't understand" in str(last_res.message).lower():
+                    return "Sorry, I didn't understand that command."
+
         if task_state.status == "FAILED" or task_state.error_message:
+            if "unknown_goal" in str(task_state.error_message).lower() or "didn't understand" in str(task_state.error_message).lower():
+                return "Sorry, I didn't understand that command."
             return f"I ran into an issue while working on your request: {task_state.error_message or 'Operation cancelled or failed'}"
 
         if not task_state.history:

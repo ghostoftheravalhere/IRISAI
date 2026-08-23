@@ -275,7 +275,20 @@ class BackendManager {
         finish();
       });
 
-      // Send SIGINT for Python FastAPI graceful lifespan teardown
+      // Step 1: Send POST /api/v1/voice/shutdown to purge SAPI5 TTS & close microphone streams
+      try {
+        const req = http.request(
+          `http://${this.host}:${this.port}/api/v1/voice/shutdown`,
+          { method: "POST", timeout: 800 },
+          () => {}
+        );
+        req.on("error", () => {});
+        req.end();
+      } catch (e) {
+        console.error("[ELECTRON] Voice shutdown POST note:", e.message);
+      }
+
+      // Step 2: Send SIGINT for Python FastAPI graceful lifespan teardown
       try {
         proc.kill("SIGINT");
       } catch (e) {
@@ -287,12 +300,17 @@ class BackendManager {
         }
       }
 
-      // 3-second fallback timer before SIGKILL
+      // 3-second fallback timer before SIGKILL & Windows process tree taskkill
       setTimeout(() => {
         if (!resolved && proc && !proc.killed) {
-          console.warn("[ELECTRON] Python backend did not exit in 3s; sending SIGKILL...");
+          console.warn("[ELECTRON] Python backend did not exit in 3s; sending SIGKILL and taskkill tree purge...");
           try {
-            proc.kill("SIGKILL");
+            if (process.platform === "win32" && proc.pid) {
+              const { exec } = require("child_process");
+              exec(`taskkill /pid ${proc.pid} /T /F`, () => {});
+            } else {
+              proc.kill("SIGKILL");
+            }
           } catch (e) {}
           finish();
         }

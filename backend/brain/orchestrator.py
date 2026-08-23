@@ -313,9 +313,9 @@ class BrainOrchestrator:
                         intent=request.intent.intent,
                         message=turn_res.prompt_message,
                     )
-                elif turn_res.executed_result:
+                elif turn_res.executed_result and turn_res.executed_result.success:
                     result = AutomationResult(
-                        success=turn_res.executed_result.success,
+                        success=True,
                         intent=request.intent.intent,
                         message=turn_res.executed_result.message,
                     )
@@ -326,11 +326,7 @@ class BrainOrchestrator:
                         message="Action cancelled.",
                     )
                 else:
-                    result = AutomationResult(
-                        success=True,
-                        intent=request.intent.intent,
-                        message="Dialogue turn processed.",
-                    )
+                    result = self._automation_dispatcher.dispatch(request.intent)
             else:
                 result = self._automation_dispatcher.dispatch(request.intent)
 

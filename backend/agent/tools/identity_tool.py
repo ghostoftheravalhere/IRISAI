@@ -41,6 +41,16 @@ class IdentityTool:
         confirmed = bool(params.get("confirmed") or False)
 
         try:
+            if action == "greet":
+                snap = world_model.snapshot()
+                p_name = snap.person.name if (snap.person and snap.person.status == EnrollmentStatus.KNOWN.value and snap.person.name) else None
+                msg = f"Hello {p_name}! How can I help you today?" if p_name else "Hello! How can I help you today?"
+                return ToolResult(
+                    success=True,
+                    message=msg,
+                    data={"greeting": msg, "person_name": p_name},
+                )
+
             if action == "query_current_person":
                 snap = world_model.snapshot()
                 p_state = snap.person

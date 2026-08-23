@@ -76,17 +76,11 @@ class CameraService:
         self._lock = RLock()
 
     def start(self) -> dict[str, bool | int]:
-        """Start the webcam capture and return the latest camera status.
-
-        Raises:
-            CameraServiceError: If the camera is already running or cannot be
-                opened by OpenCV.
-        """
+        """Start the webcam capture and return the latest camera status."""
         with self._lock:
             if self.is_running:
-                message = f"Camera index {self._index} is already running."
-                logger.warning(message)
-                raise CameraServiceError(message, status_code=409)
+                logger.info("Camera index %d is already running.", self._index)
+                return self.status()
 
             if not self._capture.open():
                 self._release_capture()
@@ -107,16 +101,11 @@ class CameraService:
             return self.status()
 
     def stop(self) -> dict[str, bool | int]:
-        """Stop the webcam capture and return the latest camera status.
-
-        Raises:
-            CameraServiceError: If no capture session is currently running.
-        """
+        """Stop the webcam capture and return the latest camera status."""
         with self._lock:
             if not self.is_running:
-                message = f"Camera index {self._index} is not running."
-                logger.warning(message)
-                raise CameraServiceError(message, status_code=409)
+                logger.info("Camera index %d is already stopped.", self._index)
+                return self.status()
 
         self._stop_processing_loop()
         self.reset_interaction_pipeline()
@@ -126,6 +115,10 @@ class CameraService:
             self._latest_eye_data = None
             logger.info("Camera stopped on index %d", self._index)
             return self.status()
+
+    def get_status(self) -> dict[str, bool | int]:
+        """Alias for status() to provide uniform get_status interface."""
+        return self.status()
 
     def cleanup(self) -> None:
         """Release camera resources during application shutdown."""

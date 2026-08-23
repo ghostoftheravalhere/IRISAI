@@ -235,6 +235,9 @@ def build_container(app_settings: Settings) -> AppContainer:
         enabled=app_settings.FUSION_ENGINE_ENABLED,
     )
 
+    from backend.brain.conversation_manager import ConversationManager
+    conversation_manager = ConversationManager(intent_parser=intent_parser)
+
     voice_pipeline = VoiceCommandPipeline(
         intent_parser=intent_parser,
         action_engine=action_engine,
@@ -242,6 +245,7 @@ def build_container(app_settings: Settings) -> AppContainer:
         event_bus=event_bus,
         orchestrator=brain_orchestrator,
         fusion_engine=fusion_engine,
+        conversation_manager=conversation_manager,
     )
 
     audio_preprocessor = AudioPreprocessor(
@@ -274,6 +278,14 @@ def build_container(app_settings: Settings) -> AppContainer:
         on_transcript=voice_pipeline.handle_transcript,
     )
 
+    from backend.voice.speech_output import SpeechOutputManager
+    speech_output_manager = SpeechOutputManager(event_bus=event_bus)
+    voice.set_speech_output_manager(speech_output_manager)
+    speech_output_manager.set_voice_recognition_service(voice)
+    conversation_manager.set_voice_service(voice)
+    voice_pipeline.set_voice_service(voice)
+    voice_pipeline.set_speech_output_manager(speech_output_manager)
+
     health_monitor = HealthMonitor(event_bus=event_bus, enabled=app_settings.RUNTIME_PLATFORM_ENABLED)
     metrics_registry = MetricsRegistry(enabled=app_settings.METRICS_ENABLED)
     performance_monitor = PerformanceMonitor(metrics_registry=metrics_registry, event_bus=event_bus)
@@ -281,7 +293,43 @@ def build_container(app_settings: Settings) -> AppContainer:
     lifecycle_manager = LifecycleManager(event_bus=event_bus)
     recovery_manager = RecoveryManager(event_bus=event_bus)
 
-    # Register default health probes
+    # Register automatic startup and shutdown hooks for CameraService
+    lifecycle_manager.register_startup_hook("camera", camera.start)
+    lifecycle_manager.register_shutdown_hook("camera", camera.cleanup)
+
+    # Register default perception & platform health probes
+    health_monitor.register_probe(
+        "camera",
+        lambda: (
+            HealthState.HEALTHY if camera.is_running else HealthState.DEGRADED,
+            {"initialized": True, "running": camera.is_running, "device_available": camera._last_known_connected},
+        ),
+    )
+    health_monitor.register_probe(
+        "microphone",
+        lambda: (
+            HealthState.HEALTHY if voice.get_state().microphoneStatus in ("On", "Starting") else HealthState.DEGRADED,
+            {"initialized": True, "status": voice.get_state().microphoneStatus},
+        ),
+    )
+    health_monitor.register_probe(
+        "voice",
+        lambda: (
+            HealthState.HEALTHY if voice.get_state().listening else HealthState.DEGRADED,
+            {"session_active": voice.get_state().listening, "state": voice.get_state().executionStatus},
+        ),
+    )
+    health_monitor.register_probe(
+        "eye_tracking",
+        lambda: (
+            HealthState.HEALTHY if camera.is_running else HealthState.DEGRADED,
+            {"initialized": True, "running": camera.is_running, "calibrated": eye_calibration.get_progress().complete},
+        ),
+    )
+    health_monitor.register_probe(
+        "action_engine",
+        lambda: (HealthState.HEALTHY, {"ready": True}),
+    )
     health_monitor.register_probe("voice_pipeline", lambda: (HealthState.HEALTHY, {"active": True}))
     health_monitor.register_probe(
         "brain_orchestrator",
