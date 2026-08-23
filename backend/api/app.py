@@ -213,6 +213,7 @@ def _attach_container(app: FastAPI, container: AppContainer) -> None:
     app.state.diagnostics_service = container.diagnostics_service
     app.state.lifecycle_manager = container.lifecycle_manager
     app.state.recovery_manager = container.recovery_manager
+    app.state.voice = container.voice
     from backend.voice.speech_output import SpeechOutputManager
     app.state.speech_output_manager = getattr(container, "speech_output_manager", SpeechOutputManager(event_bus=container.event_bus))
 
