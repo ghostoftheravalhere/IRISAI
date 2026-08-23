@@ -177,7 +177,14 @@ class BackendManager {
       const isPkg = this.isPackaged();
       const args = isPkg ? [] : ["main.py"];
 
-      console.log(`[ELECTRON] Spawning IRIS backend (${isPkg ? "PACKAGED" : "DEV"}): ${backendExec} ${args.join(" ")} in ${backendDir}`);
+      const logMsg = `[PROD] backend executable=${backendExec} (exists=${require("fs").existsSync(backendExec)}) cwd=${backendDir}`;
+      console.log(logMsg);
+      try {
+        const fs = require("fs");
+        const logDir = app.getPath("userData");
+        if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+        fs.appendFileSync(path.join(logDir, "prod_debug.log"), `[${new Date().toISOString()}] ${logMsg}\n`);
+      } catch (e) {}
 
       this.childProcess = spawn(backendExec, args, {
         cwd: backendDir,
@@ -186,6 +193,13 @@ class BackendManager {
       });
 
       this.ownedByElectron = true;
+      const pidMsg = `[PROD] backend PID=${this.childProcess.pid}`;
+      console.log(pidMsg);
+      try {
+        const fs = require("fs");
+        const logDir = app.getPath("userData");
+        fs.appendFileSync(path.join(logDir, "prod_debug.log"), `[${new Date().toISOString()}] ${pidMsg}\n`);
+      } catch (e) {}
 
       this.childProcess.stdout.on("data", (data) => {
         const lines = data.toString().trim().split("\n");

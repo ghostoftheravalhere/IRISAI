@@ -7,6 +7,7 @@
  */
 const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const BackendManager = require("./backendManager");
 
 const isDev = !app.isPackaged;
@@ -14,7 +15,32 @@ const backendManager = new BackendManager();
 let mainWindow = null;
 let isQuitting = false;
 
+// Production Logging Helper
+function logProd(msg) {
+  const logLine = `[${new Date().toISOString()}] ${msg}\n`;
+  console.log(msg);
+  try {
+    const logDir = app.getPath("userData");
+    if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(path.join(logDir, "prod_debug.log"), logLine);
+  } catch (e) {}
+}
+
 function createWindow() {
+  const preloadPath = path.join(__dirname, "preload.js");
+  const distPath = path.join(__dirname, "../dist/index.html");
+  const backendExecPath = backendManager.getBackendExecutable();
+
+  logProd(`[PROD] app.isPackaged=${app.isPackaged}`);
+  logProd(`[PROD] __dirname=${__dirname}`);
+  logProd(`[PROD] process.resourcesPath=${process.resourcesPath}`);
+  logProd(`[PROD] frontend path=${distPath}`);
+  logProd(`[PROD] frontend exists=${fs.existsSync(distPath)}`);
+  logProd(`[PROD] preload path=${preloadPath}`);
+  logProd(`[PROD] preload exists=${fs.existsSync(preloadPath)}`);
+  logProd(`[PROD] backend executable=${backendExecPath}`);
+  logProd(`[PROD] backend exists=${fs.existsSync(backendExecPath)}`);
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -22,7 +48,7 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: "#0a0a0f",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -31,7 +57,24 @@ function createWindow() {
   // Remove default menu bar
   mainWindow.setMenuBarVisibility(false);
 
-  if (isDev && process.env.VITE_DEV_SERVER_URL !== "false") {
+  // Capture Renderer Console & Error Logs
+  mainWindow.webContents.on("console-message", (event, level, message, line, sourceId) => {
+    logProd(`[RENDERER CONSOLE] [Level ${level}] ${message} (${sourceId}:${line})`);
+  });
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    logProd(`[PROD] renderer load success: ${mainWindow.webContents.getURL()}`);
+  });
+
+  mainWindow.webContents.on("did-fail-load", (event, errorCode, errorDescription, validatedURL) => {
+    logProd(`[PROD] renderer load failure (${errorCode}: ${errorDescription}) on ${validatedURL}`);
+  });
+
+  mainWindow.webContents.on("render-process-gone", (event, details) => {
+    logProd(`[PROD CRITICAL] Render process gone: ${JSON.stringify(details)}`);
+  });
+
+  if (isDev && process.processEnvViteDevServerUrl !== "false" && process.env.VITE_DEV_SERVER_URL !== "false") {
     const loadDevServer = async (retries = 10) => {
       for (let i = 0; i < retries; i++) {
         try {
@@ -41,31 +84,17 @@ function createWindow() {
           await new Promise((r) => setTimeout(r, 400));
         }
       }
-      console.log("[ELECTRON] Dev server unreachable after retries, loading dist/index.html fallback...");
-      mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+      logProd("[ELECTRON] Dev server unreachable after retries, loading dist/index.html fallback...");
+      mainWindow.loadFile(distPath);
     };
     loadDevServer();
     mainWindow.webContents.openDevTools({ mode: "detach" });
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+    logProd(`[PROD] loading renderer from: ${distPath}`);
+    mainWindow.loadFile(distPath).catch((err) => {
+      logProd(`[PROD ERROR] Failed to loadFile(${distPath}): ${err.message}`);
+    });
   }
-
-  mainWindow.webContents.on("did-fail-load", (event, errorCode, errorDescription, validatedURL) => {
-    console.error(`[ELECTRON RENDERER FAIL] ${errorCode}: ${errorDescription} (${validatedURL})`);
-    if (validatedURL.includes("5173")) {
-      console.log("[ELECTRON] Dev server load failed, loading dist/index.html fallback...");
-      mainWindow.loadFile(path.join(__dirname, "../dist/index.html")).catch(() => {
-        const errorHtml = `
-          <html><body style="background:#0a0a0f;color:#ef4444;font-family:sans-serif;padding:3rem;text-align:center;">
-            <h2>IRIS AI — Interface Load Error</h2>
-            <p style="color:#9ca3af;">Frontend dev server and dist bundle unavailable. Run: npm run dev</p>
-            <button onclick="location.reload()" style="background:#2563eb;color:#fff;border:none;padding:0.6rem 1.2rem;border-radius:6px;cursor:pointer;margin-top:1rem;">Retry Load</button>
-          </body></html>
-        `;
-        mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(errorHtml)}`);
-      });
-    }
-  });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
