@@ -29,7 +29,8 @@ MANIFEST
 
 # PyInstaller
 *.manifest
-!backend/iris_backend.spec
+!iris_backend.spec
+.codex-runtime/
 
 # Offline Model Binaries
 resources/models/*/*.bin

@@ -179,12 +179,16 @@ class BackendManager {
 
       const logMsg = `[PROD] backend executable=${backendExec} (exists=${require("fs").existsSync(backendExec)}) cwd=${backendDir}`;
       console.log(logMsg);
-      try {
-        const fs = require("fs");
-        const logDir = app.getPath("userData");
-        if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-        fs.appendFileSync(path.join(logDir, "prod_debug.log"), `[${new Date().toISOString()}] ${logMsg}\n`);
-      } catch (e) {}
+      const writeElectronLog = (msg) => {
+        try {
+          const fs = require("fs");
+          const localAppData = process.env.LOCALAPPDATA || require("os").homedir();
+          const logDir = path.join(localAppData, "IRIS AI", "logs");
+          if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+          fs.appendFileSync(path.join(logDir, "electron.log"), `[${new Date().toISOString()}] ${msg}\n`);
+        } catch (e) {}
+      };
+      writeElectronLog(logMsg);
 
       this.childProcess = spawn(backendExec, args, {
         cwd: backendDir,
@@ -195,23 +199,25 @@ class BackendManager {
       this.ownedByElectron = true;
       const pidMsg = `[PROD] backend PID=${this.childProcess.pid}`;
       console.log(pidMsg);
-      try {
-        const fs = require("fs");
-        const logDir = app.getPath("userData");
-        fs.appendFileSync(path.join(logDir, "prod_debug.log"), `[${new Date().toISOString()}] ${pidMsg}\n`);
-      } catch (e) {}
+      writeElectronLog(pidMsg);
 
       this.childProcess.stdout.on("data", (data) => {
         const lines = data.toString().trim().split("\n");
         lines.forEach((line) => {
-          if (line) console.log(`[PYTHON BACKEND] ${line}`);
+          if (line) {
+            console.log(`[PYTHON BACKEND] ${line}`);
+            writeElectronLog(`[PYTHON BACKEND STDOUT] ${line}`);
+          }
         });
       });
 
       this.childProcess.stderr.on("data", (data) => {
         const lines = data.toString().trim().split("\n");
         lines.forEach((line) => {
-          if (line) console.error(`[PYTHON BACKEND] ${line}`);
+          if (line) {
+            console.error(`[PYTHON BACKEND] ${line}`);
+            writeElectronLog(`[PYTHON BACKEND STDERR] ${line}`);
+          }
         });
       });
 

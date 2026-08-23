@@ -1,6 +1,6 @@
 {
   "name": "iris-ai",
-  "version": "2.4.0",
+  "version": "2.4.2",
   "description": "IRIS AI — Intelligent Responsive Interface System",
   "main": "electron/main.js",
   "scripts": {
@@ -53,11 +53,11 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "IRIS AI",
-      "artifactName": "IRIS-AI-V2.4-Setup.${ext}",
+      "artifactName": "IRIS-AI-V2.4.2-Setup.${ext}",
       "uninstallDisplayName": "IRIS AI"
     },
     "portable": {
-      "artifactName": "IRIS-AI-V2.4-Portable.exe"
+      "artifactName": "IRIS-AI-V2.4.2-Portable.exe"
     }
   },
   "dependencies": {
