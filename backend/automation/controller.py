@@ -34,6 +34,16 @@ _APP_PROCESS_MAP: dict[str, dict[str, str]] = {
         "darwin": "Microsoft Edge",
         "linux": "microsoft-edge",
     },
+    "settings": {
+        "win": "SystemSettings.exe",
+        "darwin": "System Settings",
+        "linux": "gnome-control-center",
+    },
+    "camera": {
+        "win": "WindowsCamera.exe",
+        "darwin": "Camera",
+        "linux": "cheese",
+    },
 }
 
 _GRACEFUL_CLOSE_TIMEOUT_SECONDS = 2.0
@@ -105,6 +115,80 @@ class DesktopController:
         except Exception:
             logger.exception("Failed to launch Edge from voice command.")
             return False
+
+    def open_settings(self) -> bool:
+        """Launch Windows Settings app."""
+        try:
+            if sys.platform.startswith("win"):
+                subprocess.Popen(["cmd", "/c", "start", "ms-settings:"])
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-a", "System Settings"])
+            else:
+                subprocess.Popen(["gnome-control-center"])
+            logger.info("Voice automation launched Settings.")
+            return True
+        except Exception:
+            logger.exception("Failed to launch Settings from voice command.")
+            return False
+
+    def open_camera(self) -> bool:
+        """Launch Windows Camera application via ms-camera URI protocol."""
+        try:
+            if sys.platform.startswith("win"):
+                subprocess.Popen(["cmd", "/c", "start", "microsoft.windows.camera:"])
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", "-a", "Photo Booth"])
+            else:
+                subprocess.Popen(["cheese"])
+            logger.info("Voice automation launched Camera application.")
+            return True
+        except Exception:
+            logger.exception("Failed to launch Camera application from voice command.")
+            return False
+
+    _SUPPORTED_APPS: dict[str, tuple[str, ...]] = {
+        "chrome": ("chrome", "google chrome", "chrom", "browser"),
+        "notepad": ("notepad", "note pad", "editor"),
+        "edge": ("edge", "microsoft edge", "ms edge", "msedge"),
+        "settings": ("settings", "setting", "windows settings", "system settings", "control panel"),
+        "camera": ("camera", "windows camera", "webcam app", "photo booth"),
+        "vscode": ("vscode", "vs code", "visual studio code", "code"),
+        "whatsapp": ("whatsapp", "whats app"),
+        "spotify": ("spotify", "music player"),
+        "calculator": ("calculator", "calc"),
+        "explorer": ("explorer", "file explorer", "files", "my computer"),
+        "taskmgr": ("taskmgr", "task manager"),
+        "cmd": ("cmd", "command prompt", "terminal"),
+    }
+
+    def is_application_supported(self, application_name: str) -> bool:
+        """Validate whether an application target phrase matches a supported system app mapping."""
+        from backend.automation.app_resolver import app_resolver
+        return app_resolver.resolve_app_key(application_name) is not None
+
+    def open_application(self, application_name: str) -> bool:
+        """Open an application by name via DesktopAppResolver cleanly and safely."""
+        app = (application_name or "").strip()
+        if not app:
+            logger.warning("open_application rejected: Empty application name.")
+            return False
+
+        if app.startswith(("http://", "https://")):
+            try:
+                import webbrowser
+                webbrowser.open(app)
+                return True
+            except Exception:
+                return False
+
+        from backend.automation.app_resolver import app_resolver
+        target = app_resolver.resolve_app_target(app)
+        if not target.found:
+            logger.warning("[APP LAUNCH] Application '%s' not found on system: %s", app, target.error_message)
+            return False
+
+        success, msg = app_resolver.launch(target)
+        return success
 
     def close_window(self) -> bool:
         """Close the currently focused window (Alt+F4)."""
@@ -368,7 +452,13 @@ class DesktopController:
             return False
 
         try:
-            pyautogui.click(button=button, clicks=clicks)
+            self._ensure_safe_cursor_position(pyautogui)
+            old_failsafe = pyautogui.FAILSAFE
+            try:
+                pyautogui.FAILSAFE = False
+                pyautogui.click(button=button, clicks=clicks)
+            finally:
+                pyautogui.FAILSAFE = old_failsafe
             return True
         except Exception:
             logger.exception("Voice automation click failed.")
@@ -394,7 +484,13 @@ class DesktopController:
             return False
 
         try:
-            pyautogui.press(key, presses=presses)
+            self._ensure_safe_cursor_position(pyautogui)
+            old_failsafe = pyautogui.FAILSAFE
+            try:
+                pyautogui.FAILSAFE = False
+                pyautogui.press(key, presses=presses)
+            finally:
+                pyautogui.FAILSAFE = old_failsafe
             return True
         except Exception:
             logger.exception("Voice automation key press failed: %s", key)
@@ -407,11 +503,209 @@ class DesktopController:
             return False
 
         try:
-            pyautogui.hotkey(*keys)
+            self._ensure_safe_cursor_position(pyautogui)
+            old_failsafe = pyautogui.FAILSAFE
+            try:
+                pyautogui.FAILSAFE = False
+                pyautogui.hotkey(*keys)
+            finally:
+                pyautogui.FAILSAFE = old_failsafe
             return True
         except Exception:
             logger.exception("Voice automation hotkey failed: %s", "+".join(keys))
             return False
+
+    def _ensure_safe_cursor_position(self, pyautogui) -> None:
+        """Ensure mouse cursor is positioned away from screen corners to prevent PyAutoGUI fail-safe triggers."""
+        try:
+            cur_x, cur_y = pyautogui.position()
+            screen_w, screen_h = pyautogui.size()
+            if cur_x <= 10 or cur_y <= 10 or cur_x >= screen_w - 10 or cur_y >= screen_h - 10:
+                old_failsafe = pyautogui.FAILSAFE
+                try:
+                    pyautogui.FAILSAFE = False
+                    safe_x, safe_y = max(100, screen_w // 2), max(100, screen_h // 2)
+                    pyautogui.moveTo(safe_x, safe_y)
+                finally:
+                    pyautogui.FAILSAFE = old_failsafe
+        except Exception:
+            pass
+
+    def type_text(self, text: str) -> bool:
+        """Type a text string into the currently focused window."""
+        pyautogui = self._load_pyautogui()
+        if pyautogui is None:
+            return False
+
+        try:
+            self._ensure_safe_cursor_position(pyautogui)
+            old_failsafe = pyautogui.FAILSAFE
+            try:
+                pyautogui.FAILSAFE = False
+                pyautogui.write(text, interval=0.01)
+            finally:
+                pyautogui.FAILSAFE = old_failsafe
+            return True
+        except Exception:
+            logger.exception("Voice automation type_text failed: %s", text)
+            return False
+
+    def wait_for_condition(
+        self,
+        condition_func: Callable[[], bool],
+        timeout_sec: float = 5.0,
+        poll_interval_sec: float = 0.05,
+        description: str = "condition",
+    ) -> bool:
+        """Poll until condition_func returns True or timeout_sec elapses."""
+        deadline = time.monotonic() + timeout_sec
+        while time.monotonic() < deadline:
+            if condition_func():
+                return True
+            time.sleep(poll_interval_sec)
+        result = condition_func()
+        if not result:
+            logger.warning("Timed out waiting for %s after %.2fs", description, timeout_sec)
+        return result
+
+    def wait_for_window(self, application_name: str, timeout_sec: float = 3.0) -> bool:
+        """Wait until a visible window matching application_name exists."""
+        process_name = self._resolve_process_name(application_name)
+        if process_name is None:
+            return True
+
+        return self.wait_for_condition(
+            lambda: self._find_window_hwnd(process_name) is not None,
+            timeout_sec=timeout_sec,
+            poll_interval_sec=0.05,
+            description=f"window '{application_name}'",
+        )
+
+    def wait_for_window_active(self, application_name: str, timeout_sec: float = 3.0) -> bool:
+        """Wait until application_name is restored and active in the foreground."""
+        process_name = self._resolve_process_name(application_name)
+        if process_name is None:
+            return True
+
+        def _check_and_activate() -> bool:
+            if self.is_window_active(application_name):
+                return True
+            self.activate_window(application_name)
+            return self.is_window_active(application_name)
+
+        return self.wait_for_condition(
+            _check_and_activate,
+            timeout_sec=timeout_sec,
+            poll_interval_sec=0.05,
+            description=f"foreground focus for '{application_name}'",
+        )
+
+    def activate_window(self, application_name: str) -> bool:
+        """Restore and bring the main window of application_name to foreground."""
+        process_name = self._resolve_process_name(application_name)
+        if process_name is None:
+            return True
+
+        hwnd = self._find_window_hwnd(process_name)
+        if hwnd is None:
+            logger.warning("Cannot activate window; no HWND found for %s", process_name)
+            return False
+
+        if sys.platform.startswith("win"):
+            try:
+                import ctypes
+
+                user32 = ctypes.windll.user32
+                # SW_RESTORE = 9
+                user32.ShowWindow(hwnd, 9)
+                user32.SetForegroundWindow(hwnd)
+                user32.BringWindowToTop(hwnd)
+                logger.info("Activated window HWND %s for process %s", hwnd, process_name)
+                return True
+            except Exception:
+                logger.exception("Failed to activate window HWND %s", hwnd)
+                return False
+
+        return True
+
+    def is_window_active(self, application_name: str) -> bool:
+        """Return True if the current foreground window belongs to application_name."""
+        process_name = self._resolve_process_name(application_name)
+        if process_name is None:
+            return True
+
+        if sys.platform.startswith("win"):
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                user32 = ctypes.windll.user32
+                foreground_hwnd = user32.GetForegroundWindow()
+                if not foreground_hwnd:
+                    return False
+
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(foreground_hwnd, ctypes.byref(pid))
+                pids = set(self._list_windows_pids(process_name))
+                is_active = pid.value in pids
+                logger.info("Active window verification for '%s': active=%s", application_name, is_active)
+                return is_active
+            except Exception:
+                logger.exception("Failed to check active window status for %s", process_name)
+                return False
+
+        return True
+
+    def _find_window_hwnd(self, process_name: str) -> int | None:
+        """Find the HWND of the main visible window owned by process_name."""
+        pids = set(self._list_windows_pids(process_name))
+        if not pids:
+            return None
+
+        if not sys.platform.startswith("win"):
+            return 1  # Dummy HWND for non-Windows platforms
+
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.windll.user32
+            found_hwnd: list[int] = []
+
+            @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+            def _enum_proc(hwnd: int, _lparam: int) -> bool:
+                if not user32.IsWindowVisible(hwnd):
+                    return True
+                if user32.GetWindow(hwnd, _GW_OWNER):
+                    return True
+                pid = wintypes.DWORD()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                if pid.value in pids:
+                    found_hwnd.append(int(hwnd))
+                    return False
+                return True
+
+            user32.EnumWindows(_enum_proc, 0)
+            return found_hwnd[0] if found_hwnd else None
+        except Exception:
+            return None
+
+    def browser_search(self, application: str, query: str) -> bool:
+        """Open browser application, focus address bar, type search query, and press Enter."""
+        app_name = (application or "chrome").strip().lower()
+        logger.info("Executing browser search in '%s' for query: '%s'", app_name, query)
+        self.open_application(app_name)
+
+        if not self.wait_for_window(app_name, timeout_sec=3.0):
+            logger.warning("browser_search timed out waiting for window '%s'", app_name)
+            return False
+
+        if not self.wait_for_window_active(app_name, timeout_sec=3.0):
+            logger.warning("browser_search failed foreground focus verification for '%s'", app_name)
+
+        self.hotkey("ctrl", "l")
+        self.type_text(query)
+        return self.press("enter")
 
     def mute(self) -> bool:
         """Toggle system mute."""

@@ -1,0 +1,376 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 2880" width="1920" height="2880" style="background-color: #0b0f19; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="bg-layer-1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e293b" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.8"/>
+    </linearGradient>
+    <linearGradient id="bg-layer-2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.8"/>
+    </linearGradient>
+    <linearGradient id="bg-primary-uia" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#065f46"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="bg-secondary-ocr" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#9a3412"/>
+      <stop offset="100%" stop-color="#c2410c"/>
+    </linearGradient>
+    <linearGradient id="bg-fallback-ctrl" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#374151"/>
+      <stop offset="100%" stop-color="#4b5563"/>
+    </linearGradient>
+    <linearGradient id="bg-decision" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#701a75"/>
+      <stop offset="100%" stop-color="#86198f"/>
+    </linearGradient>
+
+    <!-- Markers -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrow-event" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c084fc"/>
+    </marker>
+    <marker id="arrow-loop" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#f43f5e"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#34d399"/>
+    </marker>
+  </defs>
+
+  <!-- Title Header -->
+  <rect x="40" y="40" width="1840" height="100" rx="16" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+  <text x="960" y="85" text-anchor="middle" fill="#f8fafc" font-size="32" font-weight="700">IRIS AI V4 — MASTER TECHNICAL ARCHITECTURE FLOWCHART</text>
+  <text x="960" y="118" text-anchor="middle" fill="#94a3b8" font-size="16" font-weight="500">Forensic Source-Code Verified Implementation Architecture &amp; Execution Pipeline</text>
+
+  <!-- LAYER 1: USER INPUT -->
+  <rect x="40" y="170" width="1840" height="150" rx="16" fill="url(#bg-layer-1)" stroke="#334155" stroke-width="1.5"/>
+  <text x="70" y="200" fill="#38bdf8" font-size="16" font-weight="700">LAYER 1 — USER INPUT</text>
+
+  <rect x="80" y="220" width="340" height="75" rx="10" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+  <text x="250" y="252" text-anchor="middle" fill="#f1f5f9" font-size="16" font-weight="600">User Voice Utterance</text>
+  <text x="250" y="275" text-anchor="middle" fill="#94a3b8" font-size="13">Acoustic Input Command</text>
+
+  <rect x="480" y="220" width="340" height="75" rx="10" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+  <text x="650" y="252" text-anchor="middle" fill="#f1f5f9" font-size="16" font-weight="600">Microphone Device</text>
+  <text x="650" y="275" text-anchor="middle" fill="#94a3b8" font-size="13">Hardware Capture Endpoint</text>
+
+  <rect x="880" y="220" width="420" height="75" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1090" y="248" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">VoiceRecognitionService</text>
+  <text x="1090" y="268" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/voice/recognizer.py</text>
+  <text x="1090" y="284" text-anchor="middle" fill="#64748b" font-size="12">[Tech: Python / SoundDevice PCM Buffer]</text>
+
+  <!-- Connectors Layer 1 -->
+  <path d="M 420 257 L 480 257" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 820 257 L 880 257" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- LAYER 2: SPEECH & PERCEPTION -->
+  <rect x="40" y="340" width="1840" height="170" rx="16" fill="url(#bg-layer-1)" stroke="#334155" stroke-width="1.5"/>
+  <text x="70" y="370" fill="#38bdf8" font-size="16" font-weight="700">LAYER 2 — SPEECH &amp; PERCEPTION</text>
+
+  <rect x="480" y="390" width="380" height="90" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="670" y="420" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">AudioPreprocessor</text>
+  <text x="670" y="442" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/voice/preprocessor.py</text>
+  <text x="670" y="462" text-anchor="middle" fill="#64748b" font-size="12">[Tech: NumPy / AGC / PeakLimiter]</text>
+
+  <rect x="940" y="390" width="400" height="90" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1140" y="420" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">Faster-Whisper STT</text>
+  <text x="1140" y="442" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/voice/recognizer.py (WhisperModel)</text>
+  <text x="1140" y="462" text-anchor="middle" fill="#64748b" font-size="12">[Tech: Faster-Whisper / CTranslate2 int8]</text>
+
+  <!-- Connectors Layer 1 to 2 -->
+  <path d="M 1090 295 L 1090 320 L 670 320 L 670 390" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 860 435 L 940 435" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- LAYER 3: UNDERSTANDING & NLU -->
+  <rect x="40" y="530" width="1840" height="230" rx="16" fill="url(#bg-layer-1)" stroke="#334155" stroke-width="1.5"/>
+  <text x="70" y="560" fill="#38bdf8" font-size="16" font-weight="700">LAYER 3 — UNDERSTANDING &amp; NLU</text>
+
+  <rect x="80" y="590" width="340" height="85" rx="10" fill="#0f172a" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="250" y="620" text-anchor="middle" fill="#c084fc" font-size="16" font-weight="700">TranscriptionCompletedEvent</text>
+  <text x="250" y="642" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/voice/telemetry.py</text>
+  <text x="250" y="660" text-anchor="middle" fill="#64748b" font-size="12">[Domain Event Broadcast]</text>
+
+  <rect x="480" y="590" width="360" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="660" y="620" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">BrainOrchestrator</text>
+  <text x="660" y="642" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/brain/orchestrator.py</text>
+  <text x="660" y="660" text-anchor="middle" fill="#64748b" font-size="12">[Application Master Pipeline Controller]</text>
+
+  <rect x="880" y="590" width="360" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1060" y="620" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">Normalizer &amp; NLUService</text>
+  <text x="1060" y="642" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/nlu/nlu_service.py</text>
+  <text x="1060" y="660" text-anchor="middle" fill="#64748b" font-size="12">[Rule-based NLU &amp; Entity Extractor]</text>
+
+  <rect x="1280" y="590" width="360" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1460" y="620" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">CommandParser</text>
+  <text x="1460" y="642" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/voice/command_parser.py</text>
+  <text x="1460" y="660" text-anchor="middle" fill="#64748b" font-size="12">[Pattern Matching to Action Primitive]</text>
+
+  <rect x="880" y="690" width="360" height="55" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1060" y="715" text-anchor="middle" fill="#38bdf8" font-size="16" font-weight="700">ReferenceResolver</text>
+  <text x="1060" y="733" text-anchor="middle" fill="#cbd5e1" font-size="12">backend/dialogue/reference_resolver.py</text>
+
+  <!-- Connectors Layer 2 to 3 -->
+  <path d="M 1140 480 L 1140 510 L 250 510 L 250 590" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 420 632 L 480 632" stroke="#c084fc" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow-event)"/>
+  <path d="M 840 632 L 880 632" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1240 632 L 1280 632" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1460 675 L 1460 717 L 1240 717" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- SIDE CONTAINER / LAYER 4: LIVE DESKTOP WORLD MODEL -->
+  <rect x="40" y="780" width="600" height="340" rx="16" fill="url(#bg-layer-2)" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="70" y="810" fill="#818cf8" font-size="16" font-weight="700">LAYER 4 — LIVE DESKTOP WORLD MODEL</text>
+
+  <rect x="70" y="830" width="540" height="80" rx="10" fill="#0f172a" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="340" y="860" text-anchor="middle" fill="#818cf8" font-size="17" font-weight="700">WorldModel &amp; DesktopWorldState</text>
+  <text x="340" y="880" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/context/world_model.py</text>
+  <text x="340" y="896" text-anchor="middle" fill="#64748b" font-size="12">[Ring Buffer Memory of past 50 Snapshots]</text>
+
+  <rect x="70" y="930" width="540" height="170" rx="10" fill="#0f172a" stroke="#475569" stroke-width="1"/>
+  <text x="90" y="955" fill="#f1f5f9" font-size="13" font-weight="600">• Active App &amp; Window Title</text>
+  <text x="90" y="978" fill="#f1f5f9" font-size="13" font-weight="600">• Browser URL &amp; Page Title</text>
+  <text x="90" y="1001" fill="#f1f5f9" font-size="13" font-weight="600">• Selected Text &amp; Clipboard Buffer</text>
+  <text x="90" y="1024" fill="#f1f5f9" font-size="13" font-weight="600">• Visible Dialogs &amp; Toast Notifications</text>
+  <text x="90" y="1047" fill="#f1f5f9" font-size="13" font-weight="600">• Active Project, File &amp; Cursor Line</text>
+  <text x="90" y="1070" fill="#818cf8" font-size="13" font-weight="700">• Inferred Activity: Coding / Browsing / Meeting / Idle</text>
+
+  <!-- Connect WorldModel to ReferenceResolver -->
+  <path d="M 340 830 L 340 717 L 880 717" stroke="#818cf8" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow-event)"/>
+  <text x="420" y="705" fill="#818cf8" font-size="12" font-weight="600">Context Pronoun Binding ("this", "it")</text>
+
+  <!-- LAYER 5: PLANNING & SAFETY -->
+  <rect x="670" y="780" width="1210" height="340" rx="16" fill="url(#bg-layer-1)" stroke="#334155" stroke-width="1.5"/>
+  <text x="700" y="810" fill="#38bdf8" font-size="16" font-weight="700">LAYER 5 — PLANNING &amp; SAFETY ASSESSMENT</text>
+
+  <rect x="700" y="830" width="360" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="880" y="860" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">ExecutionPlanner</text>
+  <text x="880" y="882" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/brain/execution_planner.py</text>
+  <text x="880" y="900" text-anchor="middle" fill="#64748b" font-size="12">[Task Plan Formulator]</text>
+
+  <rect x="1100" y="830" width="360" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1280" y="860" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">Risk Assessment &amp; Dry-Run</text>
+  <text x="1280" y="882" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/brain/execution_planner.py</text>
+  <text x="1280" y="900" text-anchor="middle" fill="#64748b" font-size="12">[Destructive Action &amp; State Simulation]</text>
+
+  <!-- Decision Diamond 1: Risk Level Acceptable? -->
+  <polygon points="1280,940 1420,990 1280,1040 1140,990" fill="url(#bg-decision)" stroke="#d946ef" stroke-width="2"/>
+  <text x="1280" y="986" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">Risk Level</text>
+  <text x="1280" y="1004" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">Acceptable?</text>
+
+  <rect x="1500" y="955" width="340" height="70" rx="10" fill="#0f172a" stroke="#f43f5e" stroke-width="1.5"/>
+  <text x="1670" y="985" text-anchor="middle" fill="#f43f5e" font-size="15" font-weight="700">User Confirmation Prompt</text>
+  <text x="1670" y="1005" text-anchor="middle" fill="#94a3b8" font-size="12">[Required if Risk &gt; MEDIUM]</text>
+
+  <rect x="700" y="1000" width="360" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="880" y="1030" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">WorkflowOptimizer</text>
+  <text x="880" y="1052" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/runtime/workflow_optimizer.py</text>
+  <text x="880" y="1070" text-anchor="middle" fill="#64748b" font-size="12">[Merges Redundant Launches &amp; Reuses Apps]</text>
+
+  <!-- Connectors Layer 3 to 5 & Decision 1 -->
+  <path d="M 1060 745 L 1060 765 L 880 765 L 880 830" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1060 872 L 1100 872" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1280 915 L 1280 940" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1420 990 L 1500 990" stroke="#f43f5e" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1450" y="980" fill="#f43f5e" font-size="12" font-weight="700">NO</text>
+
+  <path d="M 1280 1040 L 1280 1060 L 1060 1060" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <text x="1290" y="1055" fill="#34d399" font-size="12" font-weight="700">YES</text>
+  <path d="M 1670 1025 L 1670 1060 L 1060 1060" stroke="#34d399" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow-green)"/>
+  <text x="1560" y="1055" fill="#34d399" font-size="11">Confirmed</text>
+
+  <!-- LAYER 6 & 7: WORKFLOW EXECUTION & HIERARCHY -->
+  <rect x="40" y="1140" width="1840" height="520" rx="16" fill="url(#bg-layer-1)" stroke="#334155" stroke-width="1.5"/>
+  <text x="70" y="1170" fill="#38bdf8" font-size="16" font-weight="700">LAYER 6 &amp; 7 — WORKFLOW EXECUTION &amp; FALLBACK HIERARCHY</text>
+
+  <rect x="80" y="1195" width="420" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="290" y="1225" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">WorkflowEngine</text>
+  <text x="290" y="1247" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/brain/workflow.py</text>
+  <text x="290" y="1265" text-anchor="middle" fill="#64748b" font-size="12">[TaskPlan Step Execution Engine]</text>
+
+  <rect x="540" y="1195" width="420" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="750" y="1225" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">ActionDispatcher</text>
+  <text x="750" y="1247" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/automation/dispatcher.py</text>
+  <text x="750" y="1265" text-anchor="middle" fill="#64748b" font-size="12">[Strategy Router &amp; Skill Invoker]</text>
+
+  <path d="M 880 1085 L 880 1115 L 290 1115 L 290 1195" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 500 1237 L 540 1237" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- HIERARCHY BOXES -->
+  <!-- PRIMARY UIA -->
+  <rect x="80" y="1310" width="1760" height="95" rx="12" fill="url(#bg-primary-uia)" stroke="#10b981" stroke-width="2"/>
+  <text x="110" y="1345" fill="#ffffff" font-size="18" font-weight="800">PRIMARY STRATEGY: 1. UIAutomationEngine</text>
+  <text x="110" y="1370" fill="#a7f3d0" font-size="14" font-weight="600">Native Semantic Control Invocation via Windows UIA COM Interface {ff48dba4-60ef-4201-aa87-54103ee359e5}</text>
+  <text x="1400" y="1360" fill="#ffffff" font-size="13">backend/perception/ui_automation_engine.py</text>
+
+  <!-- SECONDARY OCR -->
+  <rect x="80" y="1425" width="1760" height="95" rx="12" fill="url(#bg-secondary-ocr)" stroke="#f97316" stroke-width="2"/>
+  <text x="110" y="1460" fill="#ffffff" font-size="18" font-weight="800">SECONDARY STRATEGY: 2. ScreenGroundingEngine</text>
+  <text x="110" y="1485" fill="#ffedd5" font-size="14" font-weight="600">Visual Screen Grounding &amp; OCR Text Coordinate Matching (OpenCV / OCREngine Bounding Boxes)</text>
+  <text x="1400" y="1475" fill="#ffffff" font-size="13">backend/perception/screen_grounding_engine.py</text>
+
+  <!-- FALLBACK DESKTOP CONTROLLER -->
+  <rect x="80" y="1540" width="1760" height="95" rx="12" fill="url(#bg-fallback-ctrl)" stroke="#9ca3af" stroke-width="2"/>
+  <text x="110" y="1575" fill="#ffffff" font-size="18" font-weight="800">FALLBACK STRATEGY: 3. DesktopController</text>
+  <text x="110" y="1600" fill="#e5e7eb" font-size="14" font-weight="600">PyAutoGUI Mouse/Keyboard Input Injection &amp; Native Win32 Process Spawning (subprocess.Popen)</text>
+  <text x="1400" y="1590" fill="#ffffff" font-size="13">backend/automation/controller.py</text>
+
+  <!-- Connect Dispatcher to Hierarchy -->
+  <path d="M 750 1280 L 750 1310" stroke="#10b981" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+  <path d="M 960 1405 L 960 1425" stroke="#f97316" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="970" y="1418" fill="#f97316" font-size="11" font-weight="700">If UIA Control Unsuitable</text>
+  <path d="M 960 1520 L 960 1540" stroke="#9ca3af" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="970" y="1533" fill="#9ca3af" font-size="11" font-weight="700">If Visual OCR Match Fails</text>
+
+  <!-- LAYER 8 & 9: VERIFICATION & SELF-HEALING RECOVERY -->
+  <rect x="40" y="1680" width="1840" height="420" rx="16" fill="url(#bg-layer-1)" stroke="#334155" stroke-width="1.5"/>
+  <text x="70" y="1710" fill="#38bdf8" font-size="16" font-weight="700">LAYER 8 &amp; 9 — VERIFICATION &amp; SELF-HEALING RECOVERY</text>
+
+  <rect x="80" y="1735" width="480" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="320" y="1765" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">VerificationEngine</text>
+  <text x="320" y="1787" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/automation/verification_action.py</text>
+  <text x="320" y="1805" text-anchor="middle" fill="#64748b" font-size="12">[UIA / OCR / Process Strategy Registry]</text>
+
+  <!-- Decision Diamond 2: Action Successful? -->
+  <polygon points="760,1735 900,1777 760,1820 620,1777" fill="url(#bg-decision)" stroke="#d946ef" stroke-width="2"/>
+  <text x="760" y="1772" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">Action Verification</text>
+  <text x="760" y="1790" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">Succeeded?</text>
+
+  <rect x="960" y="1735" width="440" height="85" rx="10" fill="#0f172a" stroke="#f43f5e" stroke-width="1.5"/>
+  <text x="1180" y="1765" text-anchor="middle" fill="#f43f5e" font-size="17" font-weight="700">AdaptiveRecoveryEngine</text>
+  <text x="1180" y="1787" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/agent/adaptive_recovery.py</text>
+  <text x="1180" y="1805" text-anchor="middle" fill="#64748b" font-size="12">[Self-Healing Strategy Coordinator]</text>
+
+  <rect x="960" y="1845" width="440" height="60" rx="10" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+  <text x="1180" y="1870" text-anchor="middle" fill="#f1f5f9" font-size="15" font-weight="600">UIChangeDetector (Pre/Post Bounding Delta)</text>
+  <text x="1180" y="1890" text-anchor="middle" fill="#94a3b8" font-size="12">backend/perception/ui_change_detector.py</text>
+
+  <rect x="960" y="1920" width="440" height="60" rx="10" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+  <text x="1180" y="1945" text-anchor="middle" fill="#f1f5f9" font-size="15" font-weight="600">Semantic Matching &amp; Memory Lookup</text>
+  <text x="1180" y="1965" text-anchor="middle" fill="#94a3b8" font-size="12">(e.g. "Settings" ➔ "Preferences" / ⚙️ Icon)</text>
+
+  <rect x="960" y="1995" width="440" height="60" rx="10" fill="#0f172a" stroke="#475569" stroke-width="1.5"/>
+  <text x="1180" y="2020" text-anchor="middle" fill="#f1f5f9" font-size="15" font-weight="600">Workflow Partial Replanning Primitives</text>
+  <text x="1180" y="2040" text-anchor="middle" fill="#94a3b8" font-size="12">(replace_step, insert_step, skip_step)</text>
+
+  <!-- Decision Diamond 3: Recovery Successful? -->
+  <polygon points="1580,1900 1720,1945 1580,1990 1440,1945" fill="url(#bg-decision)" stroke="#d946ef" stroke-width="2"/>
+  <text x="1580" y="1940" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">Recovery</text>
+  <text x="1580" y="1958" text-anchor="middle" fill="#ffffff" font-size="14" font-weight="700">Successful?</text>
+
+  <rect x="1500" y="2015" width="340" height="60" rx="10" fill="#0f172a" stroke="#f43f5e" stroke-width="1.5"/>
+  <text x="1670" y="2040" text-anchor="middle" fill="#f43f5e" font-size="15" font-weight="700">Human Escalation / Alert User</text>
+
+  <!-- Connectors Layer 7 to 8/9 & Decision 2/3 -->
+  <path d="M 960 1635 L 960 1660 L 320 1660 L 320 1735" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 560 1777 L 620 1777" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 900 1777 L 960 1777" stroke="#f43f5e" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="920" y="1767" fill="#f43f5e" font-size="12" font-weight="700">NO</text>
+
+  <path d="M 1180 1820 L 1180 1845" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1180 1905 L 1180 1920" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1180 1980 L 1180 1995" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1400 2025 L 1440 2025 L 1440 1945" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1580 1990 L 1580 2015" stroke="#f43f5e" stroke-width="2" marker-end="url(#arrow)"/>
+  <text x="1590" y="2005" fill="#f43f5e" font-size="12" font-weight="700">NO</text>
+
+  <!-- LOOP BACK ARROW RECOVERY TO WORKFLOW ENGINE -->
+  <path d="M 1580 1900 L 1580 1170 L 290 1170 L 290 1195" stroke="#f43f5e" stroke-width="2.5" stroke-dasharray="6" marker-end="url(#arrow-loop)"/>
+  <text x="1590" y="1880" fill="#f43f5e" font-size="12" font-weight="700">YES (↺ Retry Step)</text>
+
+  <!-- LAYER 10: MEMORY & LEARNING -->
+  <rect x="40" y="2120" width="1840" height="210" rx="16" fill="url(#bg-layer-1)" stroke="#334155" stroke-width="1.5"/>
+  <text x="70" y="2150" fill="#38bdf8" font-size="16" font-weight="700">LAYER 10 — MEMORY &amp; LEARNING</text>
+
+  <rect x="80" y="2175" width="420" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="290" y="2205" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">MemoryManager</text>
+  <text x="290" y="2227" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/memory/memory_manager.py</text>
+  <text x="290" y="2245" text-anchor="middle" fill="#64748b" font-size="12">[Persistent Long-Term Memory Controller]</text>
+
+  <rect x="540" y="2175" width="400" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="740" y="2205" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">SQLite Database Store</text>
+  <text x="740" y="2227" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/database/connection.py (iris.db)</text>
+  <text x="740" y="2245" text-anchor="middle" fill="#64748b" font-size="12">[Tech: SQLAlchemy ORM / SQLite]</text>
+
+  <rect x="980" y="2175" width="420" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1190" y="2205" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">HabitStore &amp; BehaviorProfiler</text>
+  <text x="1190" y="2227" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/learning/behavior_profiler.py</text>
+  <text x="1190" y="2245" text-anchor="middle" fill="#64748b" font-size="12">[User Routine &amp; Habit Profiling]</text>
+
+  <rect x="1440" y="2175" width="400" height="85" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1640" y="2205" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">Learned Control Alias Store</text>
+  <text x="1640" y="2227" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/memory/memory_manager.py</text>
+  <text x="1640" y="2245" text-anchor="middle" fill="#64748b" font-size="12">[Control Mapping Alias Feedback]</text>
+
+  <!-- Connect Decision 2 YES to Memory -->
+  <path d="M 760 1820 L 760 2175" stroke="#34d399" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+  <text x="770" y="1840" fill="#34d399" font-size="12" font-weight="700">YES (Save Step Outcome)</text>
+  <path d="M 500 2217 L 540 2217" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 940 2217 L 980 2217" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1400 2217 L 1440 2217" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Memory Feedback Loops -->
+  <path d="M 1640 2175 L 1640 1950 L 1400 1950" stroke="#38bdf8" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow)"/>
+  <text x="1650" y="2090" fill="#38bdf8" font-size="11" font-weight="600">Learned Alias Lookup</text>
+
+  <!-- EVENTBUS INFRASTRUCTURE SIDE CHANNEL -->
+  <rect x="40" y="2350" width="1840" height="180" rx="16" fill="url(#bg-layer-2)" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="70" y="2380" fill="#c084fc" font-size="16" font-weight="700">LAYER 11 — EVENTBUS INFRASTRUCTURE SIDE CHANNEL</text>
+
+  <rect x="80" y="2405" width="480" height="95" rx="10" fill="#0f172a" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="320" y="2435" text-anchor="middle" fill="#c084fc" font-size="17" font-weight="700">EventBus</text>
+  <text x="320" y="2457" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/core/events/bus.py</text>
+  <text x="320" y="2475" text-anchor="middle" fill="#64748b" font-size="12">[Central Publish / Subscribe Domain Event Bus]</text>
+
+  <rect x="600" y="2405" width="480" height="95" rx="10" fill="#0f172a" stroke="#818cf8" stroke-width="1.5"/>
+  <text x="840" y="2435" text-anchor="middle" fill="#818cf8" font-size="17" font-weight="700">ContextObserver</text>
+  <text x="840" y="2457" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/context/context_observer.py</text>
+  <text x="840" y="2475" text-anchor="middle" fill="#64748b" font-size="12">[Non-Polling Event-Driven Observer]</text>
+
+  <rect x="1120" y="2405" width="480" height="95" rx="10" fill="#0f172a" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="1360" y="2435" text-anchor="middle" fill="#c084fc" font-size="17" font-weight="700">FastAPI WebSocket Stream Router</text>
+  <text x="1360" y="2457" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/api/routes/streaming_routes.py</text>
+  <text x="1360" y="2475" text-anchor="middle" fill="#64748b" font-size="12">[Real-Time State Telemetry Stream]</text>
+
+  <path d="M 560 2452 L 600 2452" stroke="#c084fc" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow-event)"/>
+  <path d="M 1080 2452 L 1120 2452" stroke="#c084fc" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow-event)"/>
+  <path d="M 840 2405 L 840 1120 L 340 1120 L 340 910" stroke="#818cf8" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow-event)"/>
+
+  <!-- LAYER 12 & 13: OUTPUT & FRONTEND UI -->
+  <rect x="40" y="2550" width="1840" height="280" rx="16" fill="url(#bg-layer-1)" stroke="#334155" stroke-width="1.5"/>
+  <text x="70" y="2580" fill="#38bdf8" font-size="16" font-weight="700">LAYER 12 &amp; 13 — RESPONSE OUTPUT &amp; FRONTEND UI BOUNDARY</text>
+
+  <rect x="80" y="2610" width="420" height="90" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="290" y="2640" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">SpeechOutputService</text>
+  <text x="290" y="2662" text-anchor="middle" fill="#cbd5e1" font-size="13">backend/voice/speech_output.py</text>
+  <text x="290" y="2680" text-anchor="middle" fill="#64748b" font-size="12">[Tech: Win32 SAPI5 TTS Engine]</text>
+
+  <!-- BOUNDARY LINE -->
+  <line x1="540" y1="2600" x2="540" y2="2800" stroke="#f43f5e" stroke-width="2" stroke-dasharray="6"/>
+  <text x="555" y="2620" fill="#f43f5e" font-size="13" font-weight="700">BACKEND / FRONTEND API BOUNDARY (REST / WebSocket)</text>
+
+  <rect x="620" y="2610" width="360" height="90" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="800" y="2640" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">Electron Container Window</text>
+  <text x="800" y="2662" text-anchor="middle" fill="#cbd5e1" font-size="13">frontend/electron/main.js</text>
+  <text x="800" y="2680" text-anchor="middle" fill="#64748b" font-size="12">[Tech: Electron ^31.0.0 Wrapper]</text>
+
+  <rect x="1020" y="2610" width="380" height="90" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1210" y="2640" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">React SPA Application</text>
+  <text x="1210" y="2662" text-anchor="middle" fill="#cbd5e1" font-size="13">frontend/src/App.jsx</text>
+  <text x="1210" y="2680" text-anchor="middle" fill="#64748b" font-size="12">[Tech: React 18 / Vite / Axios Client]</text>
+
+  <rect x="1440" y="2610" width="400" height="90" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1640" y="2640" text-anchor="middle" fill="#38bdf8" font-size="17" font-weight="700">IRIS Desktop HUD Dashboard</text>
+  <text x="1640" y="2662" text-anchor="middle" fill="#cbd5e1" font-size="13">frontend/src/components/WorldModelHUD.jsx</text>
+  <text x="1640" y="2680" text-anchor="middle" fill="#64748b" font-size="12">[Live Context &amp; Visualizer View]</text>
+
+  <!-- Connectors to Output -->
+  <path d="M 290 2260 L 290 2610" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1360 2500 L 1360 2570 L 800 2570 L 800 2610" stroke="#c084fc" stroke-width="2" stroke-dasharray="4" marker-end="url(#arrow-event)"/>
+  <path d="M 980 2655 L 1020 2655" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M 1400 2655 L 1440 2655" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)"/>
+
+</svg>

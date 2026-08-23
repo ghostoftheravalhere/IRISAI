@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import numpy as np
+
 from backend.automation.controller import ApplicationCloseResult, DesktopController
 from backend.automation.dispatcher import AutomationDispatcher
 from backend.voice.command_parser import IntentParserService, VoiceIntentType
@@ -216,3 +218,115 @@ def test_voice_recognition_mode_and_ptt_state():
 
     released = service.push_to_talk_stop()
     assert released.pushToTalkActive is False
+
+
+def test_voice_recognition_silence_does_not_produce_actionable_transcript():
+    service = VoiceRecognitionService()
+    fake_model = _PromptSensitiveWhisperModel()
+    service._model = fake_model
+
+    transcript = service._transcribe(np.zeros(service._config.sample_rate, dtype=np.float32))
+
+    assert transcript == ""
+    assert fake_model.calls[-1]["initial_prompt"] is None
+    assert fake_model.calls[-1]["vad_filter"] is False
+    assert fake_model.calls[-1]["no_speech_threshold"] == service._config.no_speech_threshold
+
+
+def test_voice_recognition_low_noise_does_not_produce_actionable_transcript():
+    service = VoiceRecognitionService()
+    fake_model = _PromptSensitiveWhisperModel()
+    service._model = fake_model
+    rng = np.random.default_rng(7)
+    low_noise = rng.normal(0, 0.002, service._config.sample_rate).astype(np.float32)
+
+    transcript = service._transcribe(low_noise)
+
+    assert transcript == ""
+    assert fake_model.calls[-1]["initial_prompt"] is None
+    assert fake_model.calls[-1]["vad_filter"] is False
+    assert fake_model.calls[-1]["no_speech_threshold"] == service._config.no_speech_threshold
+
+
+def test_voice_recognition_preserves_previous_transcript_on_empty_speech():
+    pipeline = VoiceCommandPipeline(
+        intent_parser=IntentParserService(),
+        action_engine=_FakeActionEngine(),
+        automation_dispatcher=AutomationDispatcher(_FakeDesktop()),
+    )
+    service = VoiceRecognitionService(on_transcript=pipeline.handle_transcript)
+    service._model = _PromptSensitiveWhisperModel()
+
+    # Manually simulate a successful transcription callback
+    service._latest_transcript = "Open Chrome"
+    service._detected_intent = "OPEN_CHROME"
+    service._execution_status = "Chrome opened"
+
+    # Now pass empty audio that produces empty transcript
+    empty_audio = np.zeros(service._config.sample_rate, dtype=np.float32)
+    service._handle_audio(empty_audio)
+
+    state = service.get_state()
+    # The previous transcript, intent, and status must be preserved!
+    assert state.latestTranscript == "Open Chrome"
+    assert state.detectedIntent == "OPEN_CHROME"
+    assert state.executionStatus == "Chrome opened"
+
+
+def test_ptt_bypasses_rms_gating_and_flushes_on_release():
+    handled_buffers = []
+
+    class TracedVoiceService(VoiceRecognitionService):
+        def _handle_audio(self, audio):
+            handled_buffers.append(audio)
+            super()._handle_audio(audio)
+
+    service = TracedVoiceService(
+        config=VoiceRecognitionConfig(model_size="base", device="cpu", listen_mode=ListenMode.PUSH_TO_TALK)
+    )
+    service._model = _PromptSensitiveWhisperModel()
+
+    # 1. Verify continuous mode setting remains distinct
+    cont_service = VoiceRecognitionService(
+        config=VoiceRecognitionConfig(model_size="base", device="cpu", listen_mode=ListenMode.CONTINUOUS)
+    )
+    assert cont_service._listen_mode == ListenMode.CONTINUOUS
+
+    # 2. Push-To-Talk: activate PTT
+    service._listening = True
+    service.push_to_talk_start()
+    assert service._should_capture() is True
+
+    # Low RMS blocks (0.003 RMS < 0.010 threshold)
+    low_rms_block = np.full(4000, 0.003, dtype=np.float32)
+
+    # 3. Simulate PTT loop: accumulates all blocks without RMS gating
+    speech_blocks = [low_rms_block.copy(), low_rms_block.copy()]
+
+    # 4. Stop PTT: _should_capture becomes False
+    service.push_to_talk_stop()
+    assert service._should_capture() is False
+
+    # 5. Flush accumulated PTT buffer to _handle_audio
+    if not service._should_capture() and speech_blocks:
+        audio = np.concatenate(speech_blocks)
+        service._handle_audio(audio)
+
+    # Assert _handle_audio was invoked with full buffer despite low RMS
+    assert len(handled_buffers) == 1
+    assert len(handled_buffers[0]) == 8000
+
+
+class _PromptSensitiveWhisperModel:
+    """Regression fake: command prompts turn non-speech into command text."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def transcribe(self, audio, **kwargs):
+        self.calls.append(kwargs)
+        if kwargs.get("initial_prompt"):
+            return [SimpleNamespace(text="Copy.", no_speech_prob=0.0)], object()
+        return [], object()
+
+

@@ -11,6 +11,10 @@ from time import time
 
 import numpy as np
 
+from backend.core.config.eye_config import (
+    LEFT_EAR_LANDMARK_INDICES as LEFT_EAR_INDICES,
+    RIGHT_EAR_LANDMARK_INDICES as RIGHT_EAR_INDICES,
+)
 from backend.eye_tracking.eye_interaction_config import (
     EyeInteractionConfig,
     default_eye_interaction_config,
@@ -21,13 +25,11 @@ from backend.eye_tracking.face_mesh_service import (
     NormalizedLandmark,
     RIGHT_EYE_LANDMARK_INDICES,
 )
+from backend.utils.helpers import compute_eye_center
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# MediaPipe EAR landmark order (Soukupova & Cech).
-_RIGHT_EAR_INDICES = (33, 160, 158, 133, 153, 144)
-_LEFT_EAR_INDICES = (362, 385, 387, 263, 373, 380)
 _EXPECTED_EYE_LANDMARKS = len(LEFT_EYE_LANDMARK_INDICES)
 _MAD_TO_STD = 1.4826
 
@@ -341,8 +343,8 @@ class EyeCalibrationService:
                 return False
 
         try:
-            left_ear = self._calculate_ear(eye_data.left_eye, _LEFT_EAR_INDICES)
-            right_ear = self._calculate_ear(eye_data.right_eye, _RIGHT_EAR_INDICES)
+            left_ear = self._calculate_ear(eye_data.left_eye, LEFT_EAR_INDICES)
+            right_ear = self._calculate_ear(eye_data.right_eye, RIGHT_EAR_INDICES)
         except ValueError:
             return False
 
@@ -432,12 +434,12 @@ class EyeCalibrationService:
 
     def _compute_eye_center(self, eye_data: EyeData) -> EyeCenter:
         """Compute one normalized eye-center point from both eyes."""
-        landmarks = eye_data.left_eye + eye_data.right_eye
-        if not landmarks:
+        # Sprint 1: shared helper removes duplicate eye-center averaging logic.
+        center = compute_eye_center(eye_data)
+        if center is None:
             raise ValueError("Cannot calibrate without eye landmarks.")
 
-        x = sum(landmark.x for landmark in landmarks) / len(landmarks)
-        y = sum(landmark.y for landmark in landmarks) / len(landmarks)
+        x, y = center
         if not isfinite(x) or not isfinite(y):
             raise ValueError("eye center contains non-finite coordinates")
 

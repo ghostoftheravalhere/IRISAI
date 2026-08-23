@@ -1,6 +1,14 @@
 # IRIS AI
 **Intelligent Responsive Interface System** — an AI-powered accessibility platform enabling hands-free computer control via webcam eye tracking, voice commands, desktop automation, and Gemini AI assistance.
 
+## Quick Start — IBM Submission
+
+IRIS AI V2.4 is packaged as a **production-ready Windows Installer** for the IBM SkillsBuild Hackathon.
+
+- **Standalone Installer**: [`frontend/release/IRIS-AI-V2.4-Setup.exe`](docs/INSTALLATION_GUIDE.md) (**363.69 MB**)
+- **No Setup Required**: Bundled standalone Python 3.12 runtime, FastAPI backend, Faster-Whisper, MediaPipe, PyAutoGUI, and the offline `whisper-base` AI model. **0 Python/Node.js installation or terminal commands required by judges.**
+- **Judge Demonstration Guide**: See [`docs/INSTALLATION_GUIDE.md`](docs/INSTALLATION_GUIDE.md) for step-by-step installation, eye-gaze calibration, voice commands, and troubleshooting.
+
 ## Tech Stack
 | Layer | Technology |
 |---|---|
@@ -59,7 +67,10 @@ IRISAI/
 ```
 main ← develop ← mehil / rehan / prit / dev
 ```
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full details.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/FUTURE_SCOPE.md](docs/FUTURE_SCOPE.md) for full details.
+
+## V2.4 Submission Scope Notice
+Two-way conversational voice interaction with spoken IRIS responses is planned as a future enhancement. The current V2.4 submission intentionally uses voice input with visual response feedback (`VOICE_OUTPUT_ENABLED=False`) to maximize system stability and prevent audio feedback/self-hearing during demonstration.
 
 ## Environment
 Copy `.env.example` to `.env` and fill in your `GEMINI_API_KEY`.

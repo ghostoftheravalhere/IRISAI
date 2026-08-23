@@ -1,7 +1,12 @@
-"""Dispatch parsed voice intents to desktop automation actions."""
+"""Dispatch parsed voice intents to desktop automation actions (DEPRECATED).
+
+DEPRECATED: Preferred authoritative action execution engine is backend.automation.action_engine.ActionEngine.
+This module is maintained for backward compatibility with legacy unit tests and API routes.
+"""
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import RLock
@@ -16,6 +21,7 @@ _APP_DISPLAY_NAMES = {
     "chrome": "Chrome",
     "notepad": "Notepad",
     "edge": "Edge",
+    "settings": "Settings",
 }
 
 
@@ -31,8 +37,13 @@ class AutomationResult:
 class AutomationDispatcher:
     """Route supported voice intents to reusable automation primitives."""
 
-    def __init__(self, desktop_controller: DesktopController) -> None:
+    def __init__(
+        self,
+        desktop_controller: DesktopController,
+        skill_registry: Any | None = None,
+    ) -> None:
         self._desktop_controller = desktop_controller
+        self._skill_registry = skill_registry
         self._lock = RLock()
 
     def dispatch(self, voice_intent: VoiceIntent) -> AutomationResult:
@@ -50,6 +61,45 @@ class AutomationDispatcher:
                 message = "Window closed" if success else "Failed to close window"
                 logger.info("Voice close window success=%s", success)
                 return AutomationResult(success, intent, message)
+
+            if intent == VoiceIntentType.BROWSER_SEARCH:
+                app = voice_intent.target or "chrome"
+                query = voice_intent.query or voice_intent.text
+                success = self._desktop_controller.browser_search(app, query)
+                message = f"Searched '{query}' in {app}" if success else f"Failed search in {app}"
+                logger.info("Voice browser search result: %s success=%s", message, success)
+                return AutomationResult(success, intent, message)
+
+            if intent == VoiceIntentType.HOTKEY:
+                keys = voice_intent.params.get("keys", ["ctrl", "l"]) if voice_intent.params else ["ctrl", "l"]
+                success = self._desktop_controller.hotkey(*keys)
+                return AutomationResult(success, intent, f"Hotkey {'+'.join(keys)}")
+
+            if intent == VoiceIntentType.TYPE_TEXT:
+                text_to_type = voice_intent.query or (voice_intent.params.get("text", "") if voice_intent.params else voice_intent.text)
+                success = self._desktop_controller.type_text(text_to_type)
+                return AutomationResult(success, intent, f"Typed text '{text_to_type}'")
+
+            if intent == VoiceIntentType.PRESS_KEY:
+                key = voice_intent.params.get("key", "enter") if voice_intent.params else "enter"
+                success = self._desktop_controller.press(key)
+                return AutomationResult(success, intent, f"Pressed key '{key}'")
+
+            if intent == VoiceIntentType.WAIT_FOR_WINDOW:
+                target = voice_intent.target or "chrome"
+                timeout = voice_intent.params.get("timeout_sec", 3.0) if voice_intent.params else 3.0
+                success = self._desktop_controller.wait_for_window(target, timeout_sec=timeout)
+                return AutomationResult(success, intent, f"Wait for window '{target}' success={success}")
+
+            if intent == VoiceIntentType.ACTIVATE_WINDOW:
+                target = voice_intent.target or "chrome"
+                success = self._desktop_controller.activate_window(target)
+                return AutomationResult(success, intent, f"Activate window '{target}' success={success}")
+
+            if intent == VoiceIntentType.VERIFY_WINDOW_ACTIVE:
+                target = voice_intent.target or "chrome"
+                active = self._desktop_controller.wait_for_window_active(target, timeout_sec=3.0)
+                return AutomationResult(active, intent, f"Verify window active '{target}' success={active}")
 
             if intent == VoiceIntentType.CLOSE_APPLICATION:
                 return self._dispatch_close(voice_intent)
@@ -133,6 +183,12 @@ class AutomationDispatcher:
         elif target == "edge":
             success = self._desktop_controller.open_edge()
             display = "Edge"
+        elif target in ("settings", "setting", "windows settings", "system settings"):
+            success = self._desktop_controller.open_settings()
+            display = "Settings"
+        elif target:
+            success = self._desktop_controller.open_application(target)
+            display = target.title()
         else:
             logger.warning("Unsupported open application target: %s", target or intent.value)
             return AutomationResult(False, intent, "Unsupported application.")

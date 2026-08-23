@@ -1,103 +1,68 @@
-.container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  background: #0a0a0f;
-}
-
-.card {
+.dashboardLayout {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 1.25rem;
-  padding: 3rem 4rem;
-  background: #13131a;
-  border: 1px solid #2a2a3a;
-  border-radius: 1.25rem;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
-  min-width: 340px;
+  height: 100vh;
+  width: 100vw;
+  background: radial-gradient(circle at top left, #121829 0%, #0a0c14 60%);
+  color: var(--text-primary);
+  padding: 16px;
+  gap: 16px;
+  overflow: hidden;
 }
 
-.logo {
+.topHeader {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
+  padding: 12px 20px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(16px);
 }
 
-.logoIcon {
-  font-size: 3rem;
-  line-height: 1;
+.brandTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.title {
-  font-size: 2.25rem;
+.eyeIcon {
+  font-size: 20px;
+}
+
+.brandTitle h1 {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.versionBadge {
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.15em;
-  color: #e8e8ff;
-  margin: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 242, 254, 0.15);
+  color: var(--accent-cyan);
+  border: 1px solid rgba(0, 242, 254, 0.3);
 }
 
-.subtitle {
-  font-size: 0.8rem;
-  color: #6b6b8a;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  margin: 0;
+.mainGrid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+  height: calc(100% - 70px);
+  overflow: hidden;
 }
 
-.divider {
-  width: 100%;
-  height: 1px;
-  background: #2a2a3a;
-}
-
-.statusRow {
+.leftCol, .rightCol {
   display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.dotOnline,
-.dotOffline {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.dotOnline {
-  background: #22c55e;
-  box-shadow: 0 0 8px #22c55e;
-}
-
-.dotOffline {
-  background: #ef4444;
-  box-shadow: 0 0 8px #ef4444;
-}
-
-.statusText {
-  font-size: 0.95rem;
-  color: #c0c0d8;
-}
-
-.version {
-  font-size: 0.75rem;
-  color: #4a4a6a;
-  margin: 0;
-}
-
-.cards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  justify-content: center;
-  width: 100%;
-}
-
-.cardDetail {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  overflow: hidden;
 }

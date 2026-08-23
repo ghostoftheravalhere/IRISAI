@@ -2,52 +2,77 @@
 FastAPI Application Factory
 Creates and configures the FastAPI app with all routers and middleware.
 """
-from fastapi import FastAPI
+import asyncio
+from contextlib import asynccontextmanager
+import time
+from typing import Any
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import camera, eye, health, voice
-from backend.automation.controller import DesktopController
-from backend.automation.dispatcher import AutomationDispatcher
+from backend.api.routes import (
+    agent_routes,
+    auth_routes,
+    camera,
+    dialogue_routes,
+    eye,
+    gaze_dataset_routes,
+    goal_routes,
+    health,
+    learning_routes,
+    memory_routes,
+    native_app_routes,
+    nlu_routes,
+    preview_routes,
+    recovery_routes,
+    runtime_routes,
+    streaming_routes,
+    uia_routes,
+    verification_routes,
+    vision_action_routes,
+    vision_routes,
+    voice,
+    wakeword_routes,
+    world_routes,
+    workspace_routes,
+)
 from backend.config.settings import settings
-from backend.eye_tracking.action_engine import ActionEngine
-from backend.eye_tracking.blink_detection_service import BlinkDetectionService
-from backend.eye_tracking.calibration import EyeCalibrationService
-from backend.eye_tracking.camera_service import CameraService
-from backend.eye_tracking.cursor_controller import CursorController
-from backend.eye_tracking.debug_visualization_service import GazeDebugVisualizationService
-from backend.eye_tracking.eye_interaction_config import EyeInteractionConfig
-from backend.eye_tracking.gaze_service import EyeGazeService
-from backend.eye_tracking.gesture_interpreter_service import GestureInterpreterService
+from backend.core.di.container import AppContainer, build_container
 from backend.utils.logger import get_logger
-from backend.voice.command_parser import IntentParserService
-from backend.voice.pipeline import VoiceCommandPipeline
-from backend.voice.recognizer import ListenMode, VoiceRecognitionConfig, VoiceRecognitionService
 
 logger = get_logger(__name__)
 
 
-def _build_eye_interaction_config() -> EyeInteractionConfig:
-    """Build shared eye interaction thresholds from application settings."""
-    config = EyeInteractionConfig(
-        ear_close_threshold=settings.EAR_CLOSE_THRESHOLD,
-        ear_open_threshold=settings.EAR_OPEN_THRESHOLD,
-        intentional_blink_min_ms=settings.INTENTIONAL_BLINK_MIN_MS,
-        intentional_blink_max_ms=settings.INTENTIONAL_BLINK_MAX_MS,
-        double_long_blink_window_ms=settings.DOUBLE_LONG_BLINK_WINDOW_MS,
-        cursor_sensitivity=settings.CURSOR_SENSITIVITY,
-        cursor_smoothing_alpha=settings.CURSOR_SMOOTHING,
-        cursor_dead_zone_px=settings.CURSOR_DEAD_ZONE_PX,
-        cursor_min_move_px=settings.CURSOR_MIN_MOVE_PX,
-        cursor_max_step_px=settings.CURSOR_MAX_STEP_PX,
-        gaze_smoothing_alpha=settings.GAZE_SMOOTHING,
-        tracking_confidence_threshold=settings.TRACKING_CONFIDENCE_THRESHOLD,
-        calibration_quality_threshold=settings.CALIBRATION_QUALITY_THRESHOLD,
-        calibration_rmse_scale=settings.CALIBRATION_RMSE_SCALE,
-        calibration_good_score_threshold=settings.CALIBRATION_GOOD_SCORE_THRESHOLD,
-        overlay_mode=settings.OVERLAY_MODE.lower().strip(),
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI application lifespan context manager for startup and shutdown actions."""
+    eye_config = getattr(app.state, "eye_interaction_config", None)
+    logger.info("IRIS AI backend started - v%s [%s]", settings.APP_VERSION, settings.APP_ENV)
+    if eye_config:
+        logger.info(
+            "Eye interaction ready: intentional blink %.0f-%.0f ms, confidence threshold %.2f",
+            eye_config.intentional_blink_min_ms,
+            eye_config.intentional_blink_max_ms,
+            eye_config.tracking_confidence_threshold,
+        )
+    logger.info(
+        "Voice command pipeline ready (Whisper model=%s, sample_rate=%s)",
+        settings.WHISPER_MODEL,
+        settings.MIC_SAMPLE_RATE,
     )
-    config.validate()
-    return config
+    if hasattr(app.state, "lifecycle_manager"):
+        app.state.lifecycle_manager.startup()
+
+    yield
+
+    # Ensure webcam and voice streams are released cleanly upon server shutdown.
+    if hasattr(app.state, "lifecycle_manager"):
+        app.state.lifecycle_manager.shutdown(reason="server_shutdown")
+    if hasattr(app.state, "voice") and app.state.voice is not None:
+        app.state.voice.stop()
+    if hasattr(app.state, "camera") and app.state.camera is not None:
+        app.state.camera.cleanup()
+    logger.info("IRIS AI backend shut down cleanly.")
 
 
 def create_app() -> FastAPI:
@@ -55,6 +80,7 @@ def create_app() -> FastAPI:
         title="IRIS AI Backend",
         version=settings.APP_VERSION,
         docs_url="/docs" if settings.DEBUG else None,
+        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -64,92 +90,156 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    eye_config = _build_eye_interaction_config()
-    app.state.eye_interaction_config = eye_config
-
-    # Shared service instances — attached to app.state for request access
-    app.state.camera = CameraService(
-        camera_index=settings.WEBCAM_INDEX,
-        eye_config=eye_config,
-    )
-    app.state.eye_calibration = EyeCalibrationService(eye_config=eye_config)
-    app.state.eye_gaze = EyeGazeService(
-        camera_service=app.state.camera,
-        calibration_service=app.state.eye_calibration,
-        eye_config=eye_config,
-    )
-    app.state.blink_detection = BlinkDetectionService(config=eye_config)
-    app.state.gesture_interpreter = GestureInterpreterService(config=eye_config)
-    app.state.action_engine = ActionEngine(eye_config=eye_config)
-    app.state.cursor_controller = CursorController(
-        gaze_service=app.state.eye_gaze,
-        eye_config=eye_config,
-    )
-    app.state.camera.configure_blink_detection(
-        blink_detection_service=app.state.blink_detection,
-        gesture_interpreter_service=app.state.gesture_interpreter,
-        action_engine=app.state.action_engine,
-        cursor_controller=app.state.cursor_controller,
-    )
-    app.state.gaze_debug_visualizer = GazeDebugVisualizationService(
-        overlay_mode=eye_config.overlay_mode,
-    )
-    app.state.camera.configure_gaze_debug_visualization(
-        gaze_service=app.state.eye_gaze,
-        calibration_service=app.state.eye_calibration,
-        debug_visualizer=app.state.gaze_debug_visualizer,
-    )
-
-    # Voice → IntentParser → ActionEngine → DesktopController
-    app.state.desktop_controller = DesktopController()
-    app.state.automation_dispatcher = AutomationDispatcher(app.state.desktop_controller)
-    app.state.intent_parser = IntentParserService()
-    app.state.voice_pipeline = VoiceCommandPipeline(
-        intent_parser=app.state.intent_parser,
-        action_engine=app.state.action_engine,
-        automation_dispatcher=app.state.automation_dispatcher,
-    )
-    listen_mode_raw = settings.VOICE_LISTEN_MODE.strip().lower().replace("-", "_")
-    try:
-        default_listen_mode = ListenMode(listen_mode_raw)
-    except ValueError:
-        logger.warning("Invalid VOICE_LISTEN_MODE=%s; defaulting to continuous.", settings.VOICE_LISTEN_MODE)
-        default_listen_mode = ListenMode.CONTINUOUS
-
-    app.state.voice = VoiceRecognitionService(
-        config=VoiceRecognitionConfig(
-            model_size=settings.WHISPER_MODEL,
-            sample_rate=settings.MIC_SAMPLE_RATE,
-            listen_mode=default_listen_mode,
-        ),
-        on_transcript=app.state.voice_pipeline.handle_transcript,
-    )
+    container = build_container(settings)
+    _attach_container(app, container)
 
     app.include_router(health.router)
     app.include_router(camera.router)
+    app.include_router(camera.router, prefix="/api/v1")
     app.include_router(eye.router, prefix="/eye")
+    app.include_router(eye.router, prefix="/api/v1/eye")
     app.include_router(voice.router, prefix="/voice")
+    app.include_router(voice.router, prefix="/api/v1/voice")
+    app.include_router(vision_routes.router, prefix="/api/v1")
+    app.include_router(memory_routes.router, prefix="/api/v1")
+    app.include_router(dialogue_routes.router, prefix="/api/v1")
+    app.include_router(workspace_routes.router, prefix="/api/v1")
+    app.include_router(goal_routes.router, prefix="/api/v1")
+    app.include_router(wakeword_routes.router, prefix="/api/v1")
+    app.include_router(vision_action_routes.router, prefix="/api/v1")
+    app.include_router(native_app_routes.router, prefix="/api/v1")
+    app.include_router(nlu_routes.router, prefix="/api/v1")
+    app.include_router(streaming_routes.router, prefix="/api/v1")
+    app.include_router(learning_routes.router, prefix="/api/v1")
+    app.include_router(agent_routes.router, prefix="/api/v1")
+    app.include_router(verification_routes.router, prefix="/api/v1")
+    app.include_router(uia_routes.router, prefix="/api/v1")
+    app.include_router(preview_routes.router, prefix="/api/v1")
+    app.include_router(recovery_routes.router, prefix="/api/v1")
+    app.include_router(world_routes.router, prefix="/api/v1")
+    app.include_router(runtime_routes.router, prefix="/api/v1")
+    app.include_router(gaze_dataset_routes.router, prefix="/api/v1")
+    app.include_router(auth_routes.router)
+    app.include_router(auth_routes.github_router)
 
-    @app.on_event("startup")
-    async def on_startup():
-        logger.info("IRIS AI backend started — v%s [%s]", settings.APP_VERSION, settings.APP_ENV)
-        logger.info(
-            "Eye interaction ready: intentional blink %.0f–%.0f ms, confidence threshold %.2f",
-            eye_config.intentional_blink_min_ms,
-            eye_config.intentional_blink_max_ms,
-            eye_config.tracking_confidence_threshold,
-        )
-        logger.info(
-            "Voice command pipeline ready (Whisper model=%s, sample_rate=%s)",
-            settings.WHISPER_MODEL,
-            settings.MIC_SAMPLE_RATE,
-        )
+    @app.get("/api/v1/health")
+    async def get_health_status():
+        """Return runtime platform component health status and diagnostics."""
+        if hasattr(app.state, "diagnostics_service"):
+            return app.state.diagnostics_service.generate_snapshot()
+        return {"status": "HEALTHY"}
 
-    @app.on_event("shutdown")
-    async def on_shutdown():
-        # Ensure the webcam is released even if the client never called /camera/stop
-        app.state.voice.stop()
-        app.state.camera.cleanup()
-        logger.info("IRIS AI backend shut down cleanly.")
+    @app.get("/api/v1/diagnostics")
+    async def get_diagnostics():
+        """Return complete runtime component diagnostic snapshot."""
+        if hasattr(app.state, "diagnostics_service"):
+            return app.state.diagnostics_service.generate_snapshot()
+        return {
+            "camera": {"running": getattr(app.state.camera, "is_running", False)},
+            "microphone": {"status": getattr(app.state.voice, "get_state", lambda: None)().microphoneStatus if hasattr(app.state, "voice") else "Off"},
+            "voice": {"listening": getattr(app.state.voice, "get_state", lambda: None)().listening if hasattr(app.state, "voice") else False},
+        }
+
+    @app.get("/api/v1/metrics")
+    async def get_metrics_summary():
+        """Return operational metrics summary."""
+        if hasattr(app.state, "metrics_registry"):
+            return app.state.metrics_registry.get_metrics_summary()
+        return {}
+
+    @app.websocket("/ws/events")
+    async def websocket_events_endpoint(websocket: WebSocket):
+        """WebSocket endpoint for real-time domain telemetry and agent event streaming."""
+        await websocket.accept()
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def _on_domain_event(event: Any):
+            try:
+                event_dict = {
+                    "event_type": type(event).__name__,
+                    "timestamp": getattr(event, "timestamp", time.time()),
+                    "event_id": getattr(event, "event_id", ""),
+                }
+                for attr in ("raw_transcript", "intent", "intent_type", "action", "success", "execution_status", "rule_applied", "normalized_transcript", "plan_name", "plan_id", "steps", "step_index"):
+                    if hasattr(event, attr):
+                        val = getattr(event, attr)
+                        if isinstance(val, (list, tuple)):
+                            event_dict[attr] = [dict(s) if hasattr(s, "_asdict") else str(s) for s in val]
+                        else:
+                            event_dict[attr] = str(val)
+
+                loop.call_soon_threadsafe(queue.put_nowait, event_dict)
+            except Exception as e:
+                logger.debug("Error preparing event for WebSocket: %s", e)
+
+        event_bus = getattr(app.state, "event_bus", None)
+        subscribed_classes = []
+        if event_bus is not None:
+            try:
+                from backend.brain.workflow_events import WorkflowCompletedEvent, WorkflowFailedEvent, WorkflowStartedEvent, WorkflowStepCompletedEvent
+                from backend.voice.telemetry import AutomationExecutedEvent, IntentParsedEvent, TranscriptionCompletedEvent
+                subscribed_classes = [
+                    IntentParsedEvent,
+                    TranscriptionCompletedEvent,
+                    AutomationExecutedEvent,
+                    WorkflowStartedEvent,
+                    WorkflowStepCompletedEvent,
+                    WorkflowCompletedEvent,
+                    WorkflowFailedEvent,
+                ]
+                for ev_cls in subscribed_classes:
+                    event_bus.subscribe(ev_cls, _on_domain_event)
+            except Exception as e:
+                logger.warning("Could not subscribe WebSocket to event bus: %s", e)
+
+        try:
+            while True:
+                try:
+                    event_data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    await websocket.send_json(event_data)
+                except asyncio.TimeoutError:
+                    await websocket.send_json({"event_type": "Heartbeat", "status": "idle"})
+        except (WebSocketDisconnect, Exception) as exc:
+            logger.info("WebSocket disconnected from /ws/events (%s)", exc)
+        finally:
+            if event_bus is not None and subscribed_classes:
+                for ev_cls in subscribed_classes:
+                    event_bus.unsubscribe(ev_cls, _on_domain_event)
 
     return app
+
+
+def _attach_container(app: FastAPI, container: AppContainer) -> None:
+    """Attach DI services using the existing public app.state names."""
+    app.state.eye_interaction_config = container.eye_interaction_config
+    app.state.camera = container.camera
+    app.state.eye_calibration = container.eye_calibration
+    app.state.eye_gaze = container.eye_gaze
+    app.state.blink_detection = container.blink_detection
+    app.state.gesture_interpreter = container.gesture_interpreter
+    app.state.action_engine = container.action_engine
+    app.state.cursor_controller = container.cursor_controller
+    app.state.gaze_debug_visualizer = container.gaze_debug_visualizer
+    app.state.desktop_controller = container.desktop_controller
+    app.state.automation_dispatcher = container.automation_dispatcher
+    app.state.intent_parser = container.intent_parser
+    app.state.conversation_manager = getattr(container, "conversation_manager", getattr(container.voice_pipeline, "_conversation_manager", None))
+    app.state.voice_pipeline = container.voice_pipeline
+    app.state.audio_preprocessor = container.audio_preprocessor
+    app.state.event_bus = container.event_bus
+    app.state.voice_telemetry = container.voice_telemetry
+    app.state.brain_orchestrator = container.brain_orchestrator
+    app.state.context_store = container.context_store
+    app.state.fusion_engine = container.fusion_engine
+    app.state.workflow_engine = container.workflow_engine
+    app.state.skill_registry = container.skill_registry
+    app.state.reasoning_service = container.reasoning_service
+    app.state.health_monitor = container.health_monitor
+    app.state.metrics_registry = container.metrics_registry
+    app.state.diagnostics_service = container.diagnostics_service
+    app.state.lifecycle_manager = container.lifecycle_manager
+    app.state.recovery_manager = container.recovery_manager
+    app.state.voice = container.voice
+    from backend.voice.speech_output import SpeechOutputManager
+    app.state.speech_output_manager = getattr(container, "speech_output_manager", SpeechOutputManager(event_bus=container.event_bus))

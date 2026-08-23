@@ -9,6 +9,7 @@ const calibrationService = {
   restart: () => api.post("/eye/calibration/restart"),
   capture: () => api.post("/eye/calibration/capture"),
   getStatus: () => api.get("/eye/status"),
+  getGuidance: () => api.get("/eye/calibration/guidance"),
   enableCursor: () => api.post("/eye/cursor/enable"),
   disableCursor: () => api.post("/eye/cursor/disable"),
 };

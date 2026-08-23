@@ -11,6 +11,8 @@ import cv2
 import numpy as np
 
 from backend.eye_tracking.face_mesh_service import EyeData, FaceMeshService
+from backend.perception.camera.capture_service import CaptureService
+from backend.utils.helpers import compute_eye_center
 from backend.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -57,7 +59,7 @@ class CameraService:
 
         self._index = camera_index
         self._eye_config = eye_config or default_eye_interaction_config()
-        self._capture: cv2.VideoCapture | None = None
+        self._capture = CaptureService(camera_index)
         self._face_mesh = FaceMeshService()
         self._latest_eye_data: EyeData | None = None
         self._gaze_service: EyeGazeService | None = None
@@ -74,20 +76,13 @@ class CameraService:
         self._lock = RLock()
 
     def start(self) -> dict[str, bool | int]:
-        """Start the webcam capture and return the latest camera status.
-
-        Raises:
-            CameraServiceError: If the camera is already running or cannot be
-                opened by OpenCV.
-        """
+        """Start the webcam capture and return the latest camera status."""
         with self._lock:
             if self.is_running:
-                message = f"Camera index {self._index} is already running."
-                logger.warning(message)
-                raise CameraServiceError(message, status_code=409)
+                logger.info("Camera index %d is already running.", self._index)
+                return self.status()
 
-            self._capture = cv2.VideoCapture(self._index)
-            if not self._capture.isOpened():
+            if not self._capture.open():
                 self._release_capture()
                 self._last_known_connected = False
                 message = f"Camera index {self._index} could not be opened."
@@ -106,16 +101,11 @@ class CameraService:
             return self.status()
 
     def stop(self) -> dict[str, bool | int]:
-        """Stop the webcam capture and return the latest camera status.
-
-        Raises:
-            CameraServiceError: If no capture session is currently running.
-        """
+        """Stop the webcam capture and return the latest camera status."""
         with self._lock:
             if not self.is_running:
-                message = f"Camera index {self._index} is not running."
-                logger.warning(message)
-                raise CameraServiceError(message, status_code=409)
+                logger.info("Camera index %d is already stopped.", self._index)
+                return self.status()
 
         self._stop_processing_loop()
         self.reset_interaction_pipeline()
@@ -126,12 +116,16 @@ class CameraService:
             logger.info("Camera stopped on index %d", self._index)
             return self.status()
 
+    def get_status(self) -> dict[str, bool | int]:
+        """Alias for status() to provide uniform get_status interface."""
+        return self.status()
+
     def cleanup(self) -> None:
         """Release camera resources during application shutdown."""
         self._stop_processing_loop()
         self.reset_interaction_pipeline()
         with self._lock:
-            if self._capture is not None:
+            if self._capture.is_open:
                 self._release_capture()
                 self._latest_jpeg = None
                 self._latest_eye_data = None
@@ -193,7 +187,7 @@ class CameraService:
     def is_running(self) -> bool:
         """Return whether the managed OpenCV capture is currently open."""
         with self._lock:
-            return self._capture is not None and self._capture.isOpened()
+            return self._capture.is_open
 
     def status(self) -> dict[str, bool | int]:
         """Return camera connection and capture status."""
@@ -268,7 +262,8 @@ class CameraService:
                 sleep(poll_s)
                 continue
 
-            center = self._eye_data_center(eye_data)
+            # Sprint 1: shared helper removes duplicate eye-center averaging logic.
+            center = compute_eye_center(eye_data)
             if center is None:
                 sleep(poll_s)
                 continue
@@ -294,16 +289,6 @@ class CameraService:
         )
         return samples
 
-    def _eye_data_center(self, eye_data: EyeData) -> tuple[float, float] | None:
-        """Return a quick eye-center estimate used for frame deduplication."""
-        landmarks = eye_data.left_eye + eye_data.right_eye
-        if not landmarks:
-            return None
-        return (
-            sum(landmark.x for landmark in landmarks) / len(landmarks),
-            sum(landmark.y for landmark in landmarks) / len(landmarks),
-        )
-
     def _stop_processing_loop(self) -> None:
         """Signal and join the background capture/processing thread."""
         self._stop_event.set()
@@ -318,10 +303,9 @@ class CameraService:
         try:
             while not self._stop_event.is_set():
                 with self._lock:
-                    capture = self._capture
-                    if capture is None or not capture.isOpened():
+                    if not self._capture.is_open:
                         break
-                    success, frame = capture.read()
+                    success, frame = self._capture.read()
 
                 if not success or frame is None:
                     logger.warning("Camera frame read failed on index %d.", self._index)
@@ -571,6 +555,4 @@ class CameraService:
 
     def _release_capture(self) -> None:
         """Release the managed OpenCV capture instance if it exists."""
-        if self._capture is not None:
-            self._capture.release()
-            self._capture = None
+        self._capture.release()

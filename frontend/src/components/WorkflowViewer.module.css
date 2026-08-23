@@ -1,0 +1,124 @@
+.container {
+  background: var(--bg-card);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-glass);
+  padding-bottom: 10px;
+}
+
+.planTitle {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--accent-cyan);
+}
+
+.planId {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.emptyState {
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-align: center;
+  padding: 24px;
+}
+
+.stepsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stepRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: rgba(30, 41, 59, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
+}
+
+.stepBadge {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pending .stepBadge {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+}
+
+.inProgress {
+  border-color: var(--accent-blue);
+  background: rgba(79, 172, 254, 0.1);
+}
+
+.inProgress .stepBadge {
+  background: var(--accent-blue);
+  color: #000;
+}
+
+.completed {
+  border-color: rgba(0, 230, 118, 0.3);
+}
+
+.completed .stepBadge {
+  background: var(--accent-green);
+  color: #000;
+}
+
+.failed {
+  border-color: var(--accent-red);
+  background: rgba(255, 23, 68, 0.1);
+}
+
+.failed .stepBadge {
+  background: var(--accent-red);
+  color: #fff;
+}
+
+.stepInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.intentName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.targetName {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.paramsTag {
+  color: var(--accent-gold);
+}
+
+.stepStatusText {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}

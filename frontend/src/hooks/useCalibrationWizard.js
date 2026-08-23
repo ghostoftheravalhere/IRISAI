@@ -26,6 +26,13 @@ export function useCalibrationWizard() {
     [progress.progress],
   );
 
+  const [guidance, setGuidance] = useState({
+    status: "good",
+    message: "Good position — hold steady",
+    is_stable: true,
+    confidence: 1.0,
+  });
+
   const refreshProgress = useCallback(async () => {
     const { data } = await calibrationService.getProgress();
     setProgress(data);
@@ -38,6 +45,23 @@ export function useCalibrationWizard() {
       setTrackingStatus("Inactive");
     });
   }, [refreshProgress]);
+
+  useEffect(() => {
+    let interval = null;
+    if (started && !progress.complete) {
+      interval = setInterval(async () => {
+        try {
+          const { data } = await calibrationService.getGuidance();
+          setGuidance(data);
+        } catch (err) {
+          // Ignore poll errors
+        }
+      }, 200);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [started, progress.complete]);
 
   const start = useCallback(async () => {
     setError(null);
@@ -122,6 +146,7 @@ export function useCalibrationWizard() {
     capturing,
     cursorEnabled,
     error,
+    guidance,
     progress,
     progressPercent,
     progressText,

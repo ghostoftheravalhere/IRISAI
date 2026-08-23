@@ -6,8 +6,19 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("irisAPI", {
-  // Placeholder — expose IPC channels as features are built
-  // send: (channel, data) => ipcRenderer.send(channel, data),
-  // invoke: (channel, data) => ipcRenderer.invoke(channel, data),
   platform: process.platform,
+  getBackendStatus: () => ipcRenderer.invoke("backend:get-status"),
+  restartBackend: () => ipcRenderer.invoke("backend:restart"),
+  quitApp: () => ipcRenderer.invoke("app:quit"),
+  onBackendStatusChange: (callback) => {
+    const listener = (event, statusState) => {
+      if (typeof callback === "function") {
+        callback(statusState);
+      }
+    };
+    ipcRenderer.on("backend:status-changed", listener);
+    return () => {
+      ipcRenderer.removeListener("backend:status-changed", listener);
+    };
+  },
 });

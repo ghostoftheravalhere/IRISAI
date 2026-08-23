@@ -255,6 +255,57 @@ async def get_overlay_mode(request: Request) -> dict[str, str]:
     return {"mode": request.app.state.gaze_debug_visualizer.get_mode()}
 
 
+@router.get("/hud")
+async def get_gaze_hud_telemetry(request: Request) -> dict[str, object]:
+    """Return live gaze HUD overlay telemetry state."""
+    gaze_service = getattr(request.app.state, "eye_gaze", None)
+    gaze = gaze_service.get_latest_gaze() if gaze_service else None
+
+    if gaze is None:
+        return {
+            "gaze_x": 0.5,
+            "gaze_y": 0.5,
+            "confidence": 0.0,
+            "tracking_state": "lost",
+            "ptt_state": "idle",
+        }
+
+    state = "active" if gaze.confidence >= 0.45 else "low_confidence"
+    return {
+        "gaze_x": round(gaze.x, 4),
+        "gaze_y": round(gaze.y, 4),
+        "confidence": round(gaze.confidence, 4),
+        "tracking_state": state,
+        "ptt_state": "idle",
+    }
+
+
+@router.get("/calibration/guidance")
+async def get_calibration_guidance(request: Request) -> dict[str, object]:
+    """Return real-time calibration posture, distance, and head-pose guidance state."""
+    camera = getattr(request.app.state, "camera", None)
+    eye_data = camera.get_latest_eye_data() if camera else None
+
+    from backend.eye_tracking.calibration_guidance import CalibrationGuidanceService
+    guidance_service = getattr(request.app.state, "calibration_guidance", None)
+    if guidance_service is None:
+        guidance_service = CalibrationGuidanceService()
+        setattr(request.app.state, "calibration_guidance", guidance_service)
+
+    state = guidance_service.evaluate_posture(eye_data)
+    return {
+        "status": state.status,
+        "message": state.message,
+        "face_distance": state.face_distance,
+        "is_stable": state.is_stable,
+        "confidence": state.confidence,
+        "inter_eye_distance": state.inter_eye_distance,
+        "midpoint_x": state.midpoint_x,
+        "midpoint_y": state.midpoint_y,
+        "depth_delta": state.depth_delta,
+    }
+
+
 @router.post("/overlay/mode", response_model=OverlayModeResponse)
 async def set_overlay_mode(request: Request, body: OverlayModeRequest) -> dict[str, str]:
     """Switch the camera overlay between normal demo and debug diagnostics."""
