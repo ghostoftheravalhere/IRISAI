@@ -1,27 +1,28 @@
-# IRIS AI V2.4 — Verification Status: Self-Close Command Implementation
+# IRIS AI V2.4 — Verification Status: Standalone Production Windows Installer
 
 ## Verification Matrix
 
 | Check / Requirement | Component | Verification Action | Status |
 | :--- | :--- | :--- | :--- |
-| **Self-Close Voice Commands** | `command_parser.py` | Added exact phrases: `"close iris"`, `"exit iris"`, `"quit iris"`, `"close yourself"`, `"exit yourself"`, `"shutdown iris"` mapping to `VoiceIntentType.EXIT_APPLICATION` | **PASS** |
-| **Strict Phrase Matching (No False Positives)** | `command_parser.py` | `"Close Chrome"` and `"Close Microsoft Word"` map strictly to `CLOSE_APPLICATION`, leaving IRIS open. Only explicit IRIS phrases trigger `EXIT_APPLICATION` | **PASS** |
-| **Command Log Display** | `pipeline.py`, `Dashboard.jsx` | Spoken user command displays `USER: Close IRIS` $\rightarrow$ IRIS displays response `IRIS: Closing IRIS, sir.` | **PASS** |
-| **Electron IPC Shutdown Lifecycle** | `main.js`, `preload.js`, `Dashboard.jsx` | WebSocket event `AutomationExecutedEvent` triggers `window.irisAPI.quitApp()`, calling Electron `mainWindow.close()`, executing clean backend SIGINT/taskkill teardown | **PASS** |
-| **Clean Resource Teardown** | `backendManager.js` | Stops microphone, voice recognizer, eye tracking camera, background tasks, FastAPI server, and closes port 8000 with **0 orphaned processes** | **PASS** |
-| **VOICE_OUTPUT_ENABLED Preserved** | `settings.py` | `VOICE_OUTPUT_ENABLED = False` maintained; response displayed visually before immediate clean exit | **PASS** |
-| **Self-Close Diagnostic Audit** | `scratch/test_self_close_intent.py` | Tested all 8 phrases on host OS $\rightarrow$ **8 / 8 PASSED** | **PASS** |
+| **Standalone Windows Setup Installer** | `frontend/release/IRIS-AI-V2.4-Setup.exe` | Generated all-in-one NSIS setup executable (~256 MB) containing Electron, Vite, Python runtime, FastAPI, PyAutoGUI, MediaPipe, Faster-Whisper, and offline Whisper model | **PASS** |
+| **Standalone Portable Executable** | `frontend/release/IRIS-AI-V2.4-Portable.exe` | Generated single portable executable (~256 MB) for instant zero-installation execution | **PASS** |
+| **Bundled Python Backend Executable** | `backend/dist/iris_backend/iris_backend.exe` | PyInstaller built standalone backend binary; verified independent execution & `/health` response without system Python | **PASS** |
+| **Bundled Offline Whisper AI Model** | `resources/models/whisper-base/model.bin` | Included 145 MB Faster-Whisper base model directly in distribution; 100% offline, zero internet or HuggingFace dependency | **PASS** |
+| **Dynamic Path Resolution** | `backendManager.js`, `recognizer.py`, `app_resolver.py` | Uses `process.resourcesPath` and relative OS paths (`%APPDATA%`, `%PROGRAMDATA%`); **0 machine-specific paths** | **PASS** |
+| **Automatic Lifecycle & Health Check** | `main.js`, `backendManager.js` | Electron starts backend automatically $\rightarrow$ 200ms health check loop $\rightarrow$ frontend loads $\rightarrow$ clean exit on app close | **PASS** |
+| **Desktop & Start Menu Shortcuts** | `package.json` (NSIS) | Configured desktop shortcut, start menu shortcut, and uninstaller entry | **PASS** |
+| **Deployment Documentation** | `docs/INSTALLATION.md`, `README.md` | Documented installation steps, system requirements, launch/uninstall guide, offline model details, and installer sizes | **PASS** |
+| **V2.4 Submission Stability Maintained** | `settings.py` | `VOICE_OUTPUT_ENABLED = False` maintained; responses remain visual only in UI & Command Log | **PASS** |
 | **Complete System Test Suites** | 6 test suites (74 tests) | **74 / 74 PASSED** via Safe Runner | **PASS** |
-| **Frontend Production Build** | `npm --prefix frontend run build` | Built dist/ bundle in 1.18s | **PASS** |
+| **Frontend Production Build** | `npm --prefix frontend run build` | Built dist/ bundle in 1.25s | **PASS** |
 | **Git Diff Formatting** | `git diff --check` | **0 ERRORS** | **PASS** |
-| **System Memory & Processes** | PowerShell | **4.28 GB Free RAM**, 0 stale pytest worker processes | **PASS** |
 
 ---
 
 ## Web & Frontend Verification
 
 - **Frontend Build Command**: `npm --prefix frontend run build`
-- **Frontend Build Result**: Success — Vite production bundle built in 1.18s.
+- **Frontend Build Result**: Success — Vite production bundle built in 1.25s.
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "name": "iris-ai",
-  "version": "0.1.0",
+  "version": "2.4.0",
   "description": "IRIS AI — Intelligent Responsive Interface System",
   "main": "electron/main.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "dev:electron": "wait-on tcp:5173 && electron .",
     "build": "vite build",
     "package:dir": "vite build && npx electron-builder --win dir",
-    "package:installer": "vite build && npx electron-builder --win nsis",
+    "package:installer": "vite build && npx electron-builder --win nsis portable",
     "electron": "electron .",
     "preview": "vite preview",
     "lint": "eslint src --ext .js,.jsx"
@@ -37,6 +37,12 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },
@@ -47,8 +53,11 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "IRIS AI",
-      "artifactName": "IRIS.AI.Setup.${version}.${ext}",
+      "artifactName": "IRIS-AI-V2.4-Setup.${ext}",
       "uninstallDisplayName": "IRIS AI"
+    },
+    "portable": {
+      "artifactName": "IRIS-AI-V2.4-Portable.exe"
     }
   },
   "dependencies": {
