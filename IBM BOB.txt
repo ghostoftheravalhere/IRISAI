@@ -1,140 +1,167 @@
 ==================================================
-IBM BOB — USAGE IN IRIS AI PROJECT
+IBM BOB — USAGE & CONTRIBUTION IN IRIS AI PROJECT
 ==================================================
 
 1. PROJECT
 IRIS AI — Intelligent Responsive Interface System
-Submission for IBM SkillsBuild Hackathon
+IBM SkillsBuild Hackathon Submission
 
-2. ROLE OF IBM BOB
-IBM Bob was utilized as an AI-assisted development and engineering companion throughout the lifecycle of the IRIS AI project. IBM Bob served as an intelligent assistant to accelerate research, architecture reasoning, code analysis, debugging, and technical documentation.
+2. OVERVIEW OF IBM BOB'S ROLE
+During the engineering and development of IRIS AI V2.4, IBM Bob was utilized as an AI-assisted engineering companion and technical consulting tool. IBM Bob assisted the student development team in architecture design, prompt engineering, codebase analysis, forensic debugging, log analysis, test scenario formulation, and technical documentation.
 
-All final architectural choices, design decisions, implementation details, runtime testing, and overall project directions were strictly evaluated, reviewed, executed, and maintained under the human oversight and control of the student development team.
+IMPORTANT NOTICE ON AUTONOMY:
+IBM Bob did NOT independently design, autonomously build, or execute self-directed modifications to the codebase. The student engineering team maintained full responsibility, authority, and ownership over technical decisions, code reviews, empirical runtime testing, bug verification, and final integration.
 
-3. ARCHITECTURE DESIGN & PLANNING
-IBM Bob was used during early design phases and technical planning to:
-- Discuss and refine the end-to-end IRIS AI system architecture.
-- Deconstruct the multi-modal system into clear, modular components:
-  * User Input (Voice Capture, Gaze Tracking, Blink Gestures)
-  * Perception (Faster-Whisper STT, MediaPipe Landmark Extraction)
-  * Interpretation (Intent Parser, Entity Extractor, Context Fuser)
-  * Action & Automation (ActionEngine, Centralized AppResolver, PyAutoGUI, Windows OS API)
-  * Verification & Result (Telemetry EventBus, Assistant Response Generator, Dashboard UI)
-- Reason about real-time interactions and data flow between voice recognition, gaze coordinate smoothing, intent classification, desktop controller, and the Electron/React interface.
-- Help translate high-level accessibility goals into concrete technical specifications.
-- Review candidate architectural decisions to spot potential bottlenecks, latency issues, and race conditions.
-- Assist in mapping out the lifecycle of commands from speech recognition to desktop execution and visual response delivery.
+3. ARCHITECTURE PLANNING & DESIGN ASSISTANCE
+IBM Bob assisted the team by analyzing complex multi-modal requirements and suggesting modular design patterns:
+- Decoupling perception (MediaPipe gaze, Faster-Whisper voice) from orchestrator engines (BrainOrchestrator, ActionEngine).
+- Structuring event-driven WebSocket IPC buses between the FastAPI backend and Electron frontend.
+- Designing unified system health and diagnostic probes (`/health`, `/api/v1/diagnostics`).
 
-4. PROMPT ENGINEERING
-IBM Bob was used to construct, test, and refine technical prompts used throughout the engineering process.
+4. PROMPT ENGINEERING & CONVERSATIONAL DESIGN
+IBM Bob was used to construct, test, and refine system prompts:
+- Formulating intent-extraction prompts for voice command classification.
+- Designing diagnostic prompts for analyzing complex Python tracebacks and process logs.
+- Structuring fallback response templates for unhandled voice commands.
 
-Key prompt engineering workflows included:
-- Prompts for architecture generation and technical diagramming.
-- Prompts for deep-dive forensic analysis of complex system behavior.
-- Prompts for diagnosing specific runtime failures (e.g., process lifecycle, Windows API errors).
-- Prompts for evaluating alternative algorithmic approaches (e.g., Gaze smoothing techniques, VAD thresholding).
-- Prompts for generating structured implementation tasks and verification checklists.
-- Prompts for reviewing existing codebase implementations against the intended IRIS architectural standards.
+5. CODE ANALYSIS & REFACTORING RECOMMENDATIONS
+During codebase expansion, IBM Bob assisted in auditing code quality:
+- Tracing data flow across backend services to prevent main-thread looper blocking.
+- Identifying missing imports, unhandled exception paths, and signature mismatches.
+- Suggesting clean separation of concerns between UI presentation components and API client services.
 
-All prompts were iteratively crafted, tested, and refined by the student team based on actual project requirements, empirical evidence, and runtime observations.
+6. TEST SCENARIO GENERATION & VERIFICATION ASSISTANCE
+IBM Bob assisted in expanding the automated test suite to 74 comprehensive test cases:
+- Formulating edge-case test vectors for voice command normalization and intent parsing.
+- Designing mock fixtures for MediaPipe eye tracking landmarks and gaze posture guidance.
+- Verifying regression resistance across core perception and automation subsystems.
 
-5. CODE DEVELOPMENT ASSISTANCE
-IBM Bob provided development assistance across the codebase to:
-- Accelerate understanding of existing source files, dependencies, and execution entry points.
-- Rapidly locate relevant functions, modules, and error call stacks across backend and frontend layers.
-- Suggest implementation refactorings to clean up component boundaries and increase maintainability.
-- Review Python backend services (FastAPI routes, EventBus telemetry, Voice pipeline, ActionEngine).
-- Review React frontend components (Dashboard UI, System Diagnostics, Command Log, Electron preload bridge).
-- Analyze communication protocols between the Electron main process, Vite dev/prod server, and Python FastAPI backend over REST and WebSockets.
-- Assist in structuring clean code abstractions and eliminating duplicate utility logic.
-- Help break down complex user stories into actionable implementation tasks.
+7. TECHNICAL DOCUMENTATION & DIAGRAMMING
+IBM Bob provided support in structuring project documentation:
+- Drafted system flowcharts and architecture diagrams in Mermaid and Markdown formats.
+- Structured technical assessment reports (`docs/FUTURE_SCOPE.md`, `docs/INSTALLATION.md`).
+- Assisted in formatting hackathon submission documentation.
 
-Note: IBM Bob served as an interactive coding pair-programmer. Code suggestions were thoroughly inspected, adapted, and validated by the student engineering team before integration.
+8. ARCHITECTURAL BUGS, DEBUGGING, AND IBM BOB CONTRIBUTION
 
-6. DEBUGGING & TROUBLESHOOTING
-IBM Bob assisted the student team in investigating and resolving critical real-world runtime bugs during IRIS AI development, including:
+During the real-world development and host-system testing of IRIS AI, several complex runtime and architectural bugs were encountered. IBM Bob was used as an AI engineering companion to analyze log evidence, trace control paths, formulate diagnostic hypotheses, and structure robust architectural fixes under human review.
 
-A. Voice Recognition & Conversational Flow:
-   - Investigating speech recognition behavior and transcript normalization.
-   - Debugging repeated/incorrect command classifications and false intent triggers.
-   - Investigating edge cases where IRIS responses interfered with active listening.
-   - Analyzing real-time microphone stream buffering and Voice Activity Detection (VAD) timing.
+--------------------------------------------------
+A. VOICE SELF-HEARING / AUDIO FEEDBACK BUG
+--------------------------------------------------
+Problem:
+During early two-way voice testing, IRIS listened to its own spoken TTS responses through the host microphone. This caused IRIS's spoken text to be captured by the microphone, transcribed by Faster-Whisper, parsed as a new USER command, and executed recursively. This resulted in infinite feedback loops (e.g., IRIS repeating "I couldn't understand that command").
 
-B. Audio Feedback & Self-Hearing Suppression:
-   - Investigating why IRIS TTS audio output could accidentally re-enter the Whisper microphone input pipeline.
-   - Analyzing microphone stream suppression techniques and half-duplex voice lifecycle states.
-   - Investigating background speech worker threads and audio device lifecycle handling.
-   - Establishing the V2.4 Submission Stability Mode configuration (`VOICE_OUTPUT_ENABLED = False`) with visual feedback to guarantee zero audio feedback during hackathon demonstration.
+IBM Bob Debugging Contribution:
+IBM Bob assisted in analyzing microphone capture lifecycles, audio buffer draining timings, and Whisper transcription event boundaries. IBM Bob suggested implementing a hardware-level microphone suppression gate during active TTS playback.
 
-C. Application Lifecycle & Process Cleanliness:
-   - Debugging backend process termination behavior during Electron app exit.
-   - Investigating orphaned Python subprocesses surviving parent application exit on Windows.
-   - Refining graceful SIGINT/SIGTERM process teardown with `taskkill /F` fallback in Electron `backendManager.js`.
-   - Verifying that all background threads, microphone streams, camera loops, and FastAPI socket ports exit cleanly without memory leaks.
+Human Team Solution & Integration:
+The team implemented a strict half-duplex voice control model: hardware microphone stream suppression while TTS is active, clearing of buffered audio frames upon TTS completion, pre-processing STT suppression gates, and transcript filtering.
 
-D. Desktop Automation & Application Resolution:
-   - Debugging Windows application launch failures (e.g., why raw `start calculator` string execution failed in Windows shell).
-   - Investigating critical intent resolution bugs where commands like "Open Microsoft Word" incorrectly fuzzy-matched to Microsoft Edge due to vendor name collisions.
-   - Designing the `DesktopAppResolver` to resolve natural language app names dynamically via Start Menu `.lnk` shortcuts, Windows System executables (`calc.exe`, `notepad.exe`), and URI protocols (`ms-settings:`).
+--------------------------------------------------
+B. FALSE USER TRANSCRIPTS IN COMMAND LOG
+--------------------------------------------------
+Problem:
+An issue was discovered where raw speech transcription events (`TranscriptionCompletedEvent`) were published directly to the WebSocket event bus before passing through the safety and decision validation layers. As a result, recognized audio from IRIS's own TTS output briefly appeared as a USER message in the UI Command Log even if rejected downstream.
 
-7. TESTING & VERIFICATION ASSISTANCE
-IBM Bob assisted the engineering team in establishing a rigorous testing and verification protocol by:
-- Designing targeted diagnostic scripts to isolate specific subsystem failures before making code edits.
-- Reviewing runtime execution logs, terminal stack traces, and Windows event details.
-- Interpreting error codes and suggesting root cause hypotheses.
-- Structuring automated unit and integration tests for intent parsing, voice pipelines, and eye tracking.
-- Evaluating system regression stability after code modifications.
-- Reviewing frontend production build outputs (`npm run build`) and code formatting checks (`git diff --check`).
+IBM Bob Debugging Contribution:
+IBM Bob helped trace the event publication pipeline and recommended moving event emission downstream of the safety/decision gate.
 
-Verification Results Recorded in Project Matrix:
-- Automated Unit & Integration Test Suite: 74 / 74 PASSED (100% Green across 6 test suites).
-- Diagnostic Audits: Real-world app resolution audit (10/10 passed) and self-close intent audit (8/8 passed).
-- Frontend Build: Production Vite bundle compiled cleanly.
+Human Team Solution & Integration:
+The team restructured the event flow: `STT Audio -> Validation / Safety Gate -> Event Publication`. Raw transcripts are validated before being published to the frontend UI, guaranteeing zero false USER messages.
 
-8. DOCUMENTATION ASSISTANCE
-IBM Bob assisted in organizing and drafting technical documentation for the project, including:
-- `README.md` project overview and feature breakdown.
-- `FUTURE_SCOPE.md` roadmap detailing post-hackathon conversational voice vision.
-- Architectural flowcharts and system sequence documentation.
-- Diagnostic verification matrices and machine-readable handoff records.
+--------------------------------------------------
+C. ORPHANED / DUPLICATE BACKEND PROCESS BUG
+--------------------------------------------------
+Problem:
+On Windows, running Uvicorn with auto-reload enabled spawned multiprocessing child processes (`multiprocessing.spawn`, `spawn_main(parent_pid=...)`, `--multiprocessing-fork`). When the parent backend process exited or restarted, child processes remained orphaned in the background, keeping socket ports bound and running duplicate microphone/camera streams.
 
-9. EXAMPLE DEVELOPMENT WORKFLOW
-Below is the collaborative workflow used between the student team and IBM Bob during development:
+IBM Bob Debugging Contribution:
+IBM Bob analyzed Windows process evidence (PID parent-child trees, active socket bindings) and identified Uvicorn's reload/multiprocessing fork mechanism as the root cause.
 
-Student Team
-    ↓
-Defines requirement / identifies runtime problem
-    ↓
-IBM Bob
-    ↓
-Architecture discussion / prompt engineering / log analysis
-    ↓
-Suggested technical approach or code refactoring
-    ↓
-Student Team reviews, adapts, and implements code
-    ↓
-Runtime testing on host Windows machine
-    ↓
-Empirical feedback / test results / error traces
-    ↓
-IBM Bob-assisted forensic debugging and refinement
-    ↓
-Final verified implementation & automated test verification
+Human Team Solution & Integration:
+The team configured production backend execution to run single-process mode (`reload=False`), added explicit SIGTERM/SIGINT teardown handlers in Electron, and implemented process-tree fallback termination (`taskkill /F /T`) to ensure zero orphan processes remain.
 
-10. HUMAN OVERSIGHT
-IBM Bob was used strictly as an AI-assisted engineering tool. The student team remained fully responsible for selecting project requirements, evaluating suggestions, implementing code changes, conducting live system testing, and making all final technical decisions.
+--------------------------------------------------
+D. APPLICATION SHUTDOWN LIFECYCLE BUG
+--------------------------------------------------
+Problem:
+Closing the Electron application window previously left background Python processes, camera feeds, and microphone audio streams running invisibly in Windows Task Manager.
 
-11. KEY AREAS WHERE IBM BOB CONTRIBUTED
+IBM Bob Debugging Contribution:
+IBM Bob assisted in modeling a synchronous, multi-stage application teardown lifecycle contract for Electron's `before-quit` event.
 
-Area                 | IBM Bob's Contribution
----------------------|--------------------------------------------------------------------------------------
-Architecture         | Architecture planning, component breakdown, multimodal flow refinement
-Prompt Engineering   | Prompt creation, iterative refinement, forensic diagnostic prompt design
-Code Analysis        | Codebase navigation, dependency tracing, refactoring recommendations
-Debugging            | Investigating runtime failures, process leaks, and app resolution bugs
-Testing              | Test-case reasoning, log analysis, regression verification assistance
-Documentation        | Technical documentation, architecture flowcharts, future scope drafting
-Development Planning | Breaking complex requirements into modular implementation tasks
+Human Team Solution & Integration:
+The team implemented a strict shutdown pipeline: Electron `before-quit` -> Backend API shutdown request -> Camera/MediaPipe stop -> Microphone stream stop -> Python process termination -> Process-tree cleanup. Additionally, safe voice self-close commands (`"Close IRIS"`, `"Exit IRIS"`, `"Quit IRIS"`, `"Close yourself"`, `"Shutdown IRIS"`) were wired directly into this lifecycle.
 
-12. CONCLUSION
-IBM Bob played a valuable supporting role throughout the engineering workflow of IRIS AI. By assisting in system architecture reasoning, prompt engineering, forensic debugging, code organization, and technical documentation, IBM Bob empowered the student engineering team to build a highly reliable, robust, and submission-ready multimodal desktop assistant for the IBM SkillsBuild Hackathon. Final implementation integrity, verification, and technical ownership remained firmly with the student team.
+--------------------------------------------------
+E. DESKTOP APPLICATION RESOLUTION BUGS
+--------------------------------------------------
+Problem:
+Initial application launching relied on generic executable execution. This caused runtime failures on Windows:
+- Saying `"Open calculator"` attempted to run literal `calculator`, which Windows failed to resolve (Windows error: "Windows cannot find 'calculator'").
+- Saying `"Open Microsoft Word"` frequently opened Microsoft Edge or browser web searches instead of desktop Word.
+
+IBM Bob Debugging Contribution:
+IBM Bob analyzed Windows application launching mechanisms (App Paths registry, Start Menu shortcuts, URI schemes) and recommended building a dedicated application resolution service.
+
+Human Team Solution & Integration:
+The team created `DesktopAppResolver` (`backend/automation/app_resolver.py`), a centralized Windows application registry. It provides strict alias matching for desktop apps (`calc.exe` for Calculator, `Word 2016.lnk` for Word, `Excel.lnk`, `PowerPnt.lnk`, `notepad.exe`), dynamic Start Menu shortcut scanning, and URI protocol activation (`ms-settings:`), completely eliminating browser fallbacks and cross-app collisions.
+
+--------------------------------------------------
+F. EYE GAZE CALIBRATION UX BUG
+--------------------------------------------------
+Problem:
+During 9-point eye-gaze calibration, the central instruction modal dialog obscured calibration target points (specifically Point 2 Top-Center, Point 5 Center, and Point 8 Bottom-Center), preventing users from focusing on the target dot.
+
+IBM Bob Debugging Contribution:
+IBM Bob assisted in evaluating UI viewport layering, recommending a non-obstructive floating controller layout with dynamic corner positioning.
+
+Human Team Solution & Integration:
+The team redesigned the calibration UI: during active sampling, the instruction dialog converts into a compact **Floating Controller Card** anchored at `bottom: 24px, right: 24px` (dynamically shifting to `left: 24px` for bottom targets). Safe target margins (`y: 0.10` to `y: 0.82`) were established, guaranteeing 0 visual overlap across all 9 calibration points.
+
+--------------------------------------------------
+G. CURSOR CONTROL STATE/UX BUG
+--------------------------------------------------
+Problem:
+Upon completing 9-point calibration, the UI lacked an explicit control to toggle active gaze cursor control on/off, leaving users uncertain if cursor tracking was active.
+
+IBM Bob Debugging Contribution:
+IBM Bob suggested an explicit, multi-stage state pipeline separating calibration completion from active cursor movement.
+
+Human Team Solution & Integration:
+The team implemented an explicit state pipeline: `IDLE` -> `CALIBRATING` -> `CALIBRATION COMPLETE` -> `CURSOR CONTROL READY` -> `[▶ Start Cursor Control]` -> `CURSOR CONTROL ACTIVE` -> `[⏹ Stop Cursor Control]`. Active cursor movement starts **ONLY** when the user clicks **Start Cursor Control**.
+
+--------------------------------------------------
+H. VOICE OUTPUT V2.4 SUBMISSION DECISION
+--------------------------------------------------
+Problem & Decision:
+While two-way spoken voice interaction was developed and tested, real-world acoustic feedback during live demonstrations posed a operational risk.
+
+IBM Bob Debugging Contribution:
+IBM Bob assisted in analyzing submission stability trade-offs and recommended configuring a dedicated V2.4 Submission Mode.
+
+Human Team Solution & Integration:
+The team configured V2.4 Submission Stability Mode (`VOICE_INPUT = ACTIVE`, `VOICE_OUTPUT = DISABLED`, `VISUAL_RESPONSE = ACTIVE`). IRIS processes voice commands and presents responses visually in the UI and Command Log, guaranteeing 100% demo stability while documenting two-way spoken conversation as a FUTURE SCOPE enhancement.
+
+--------------------------------------------------
+I. SUMMARY OF IBM BOB CONTRIBUTIONS & TEAM RESPONSIBILITIES
+--------------------------------------------------
+
+Problem / Area | IBM Bob Contribution | Human Team Responsibility
+---------------------|-------------------------------------------------------|-------------------------------------------------------
+Audio Feedback Loop | Hypothesized hardware mic suppression & buffer drain | Implemented half-duplex voice gate & buffer clearing
+False User Log Entry | Analyzed event pipeline & suggested downstream gate | Restructured event flow to validate before publication
+Orphaned Processes | Identified Uvicorn reload multiprocessing mechanism | Configured single-process mode & process-tree teardown
+App Shutdown Leak | Modeled multi-stage Electron teardown contract | Built IPC quit handler & self-close voice commands
+App Resolution Bugs | Evaluated Windows App Paths & Start Menu shortcuts | Built `DesktopAppResolver` with zero browser fallback
+Calibration Target UX | Recommended non-obstructive floating controller layout | Implemented dynamic corner floating card & safe margins
+Cursor State Ambiguity| Proposed explicit state pipeline & start/stop controls | Built multi-stage state flow & UI toggle buttons
+V2.4 Demo Stability | Evaluated stability trade-offs for submission mode | Configured visual response mode & documented future scope
+
+9. WORKFLOW SUMMARY
+Throughout the development of IRIS AI, the collaborative engineering cycle followed this sequence:
+Requirement -> Architecture Reasoning -> Prompt Engineering -> Codebase Investigation -> Forensic Debugging -> Test Verification -> Documentation
+
+10. HUMAN OVERSIGHT & CONCLUSION
+IBM Bob served as a valuable AI development companion throughout the IRIS AI project for the IBM SkillsBuild Hackathon. By assisting in architecture planning, prompt design, root-cause analysis, and documentation structuring, IBM Bob accelerated the team's engineering velocity. All technical choices, code implementations, empirical tests, and submission approvals remained strictly under human ownership and execution by the student development team.

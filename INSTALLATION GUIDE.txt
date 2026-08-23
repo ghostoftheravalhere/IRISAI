@@ -1,18 +1,20 @@
 ==================================================
-IRIS AI V2.4 — WINDOWS INSTALLATION GUIDE
+IRIS AI V2.4 — WINDOWS INSTALLATION & DEMONSTRATION GUIDE
 ==================================================
 
 Intelligent Responsive Interface System
-IBM SkillsBuild Hackathon Submission
+IBM SkillsBuild Hackathon Official Submission
 
 --------------------------------------------------
 EXECUTIVE OVERVIEW
 --------------------------------------------------
-This guide is intended for IBM SkillsBuild Hackathon judges, mentors, evaluators, and end-users who wish to install and run IRIS AI V2.4 on Windows without setting up source code, installing Python, installing Node.js, running npm commands, or opening terminal windows.
+This guide is written specifically for IBM SkillsBuild Hackathon judges, mentors, evaluators, and end-users who wish to install, evaluate, and demonstrate IRIS AI V2.4 on Windows.
 
-IRIS AI V2.4 is distributed as a single, self-contained Windows Installer:
+No separate Python or Node.js installation is required.
 
-    IRIS-AI-V2.4-Setup.exe
+IRIS AI V2.4 is distributed as a single, standalone, self-contained Windows Installer:
+
+    frontend/release/IRIS-AI-V2.4-Setup.exe (363.69 MB)
 
 Flow:
 Download IRIS-AI-V2.4-Setup.exe -> Run Setup -> Launch IRIS AI -> Ready
@@ -32,25 +34,25 @@ Download IRIS-AI-V2.4-Setup.exe -> Run Setup -> Launch IRIS AI -> Ready
 --------------------------------------------------
 2. INSTALLER OVERVIEW
 --------------------------------------------------
-- Installer Filename : IRIS-AI-V2.4-Setup.exe
-- Installer File Size: Approximately 363.69 MB
-- Installer Type     : Standalone Windows NSIS Setup Executable
+- Installer Executable: frontend/release/IRIS-AI-V2.4-Setup.exe
+- Installer File Size  : Approximately 363.69 MB
+- Installer Format     : Standalone Windows NSIS Setup Executable
 
 Bundled Components Included:
 - Electron Application (Desktop Shell)
-- React Frontend (Dashboard UI)
+- React Frontend (Dashboard UI & Command Log)
 - Standalone Python Runtime (Embedded Python 3.12 environment)
 - FastAPI / Uvicorn (Backend API Server)
 - Faster-Whisper (Speech Recognition Engine)
-- Whisper Base Model (Offline AI model, 145 MB model.bin included)
+- Whisper Base Model (Offline AI model, 138.49 MB model.bin included)
 - MediaPipe (Facial Landmark & Eye Gaze Tracker)
 - PyAutoGUI (Windows Desktop Automation)
 
 --------------------------------------------------
 3. INSTALLATION STEPS
 --------------------------------------------------
-Step 1 — Download:
-Download IRIS-AI-V2.4-Setup.exe from the submission link.
+Step 1 — Download/Copy:
+Obtain IRIS-AI-V2.4-Setup.exe from frontend/release/.
 
 Step 2 — Start Installer:
 Double-click IRIS-AI-V2.4-Setup.exe.
@@ -68,35 +70,35 @@ The installer automatically creates Desktop and Start Menu shortcuts.
 Step 6 — Finish & Launch:
 Check "Launch IRIS AI" and click "Finish".
 
---------------------------------------------------
-4. FIRST LAUNCH EXPERIENCE
---------------------------------------------------
-When IRIS AI launches:
-1. Electron automatically starts the bundled backend executable (iris_backend.exe).
-2. Electron performs an automatic health check poll against http://127.0.0.1:8000/health.
-3. The IRIS AI Dashboard interface appears automatically with status set to READY.
-
-Zero terminal commands are required.
+Step 7 — Permissions:
+Allow camera and microphone permissions when requested by Windows.
 
 --------------------------------------------------
-5. PERMISSIONS REQUIRED
---------------------------------------------------
-- Webcam    : Used for eye tracking and gaze interaction.
-- Microphone: Used for voice command input.
-- Automation: Uses standard Windows accessibility hooks for app launching. Administrator privileges are NOT required.
-
---------------------------------------------------
-6. VERIFICATION TEST FOR EVALUATORS
+4. FIRST-TIME EYE GAZE CALIBRATION GUIDE
 --------------------------------------------------
 1. Launch IRIS AI from the Desktop shortcut.
-2. Verify perception cards (Camera Ready, Microphone Ready, Voice Input Active).
-3. Test: Say "Open Chrome"        -> Chrome opens, log displays "Google Chrome opened."
-4. Test: Say "Open Calculator"    -> Calculator opens, log displays "Windows Calculator opened."
-5. Test: Say "Open Microsoft Word" -> Word opens if installed, or log displays "Sir, I couldn't find Microsoft Word on this computer."
-6. Test: Say "Close IRIS"         -> IRIS displays "Closing IRIS, sir." and performs clean shutdown.
+2. Click "Calibrate Gaze" on the action bar.
+3. Position your face in front of camera until face tracking displays Detected.
+4. Observe Target 1/9: Top-Left. Look directly at the pulsating dot.
+5. Click "Sample Point 1/9 ->".
+6. Repeat for all 9 points.
+7. Observe completion modal: "✓ Calibration Complete".
+8. Verify status displays "Cursor Control: READY".
+9. Click "▶ Start Cursor Control" -> Status changes to "Cursor Control: ACTIVE".
+10. Click "⏹ Stop Cursor Control" to pause movement.
 
 --------------------------------------------------
-7. V2.4 VOICE OUTPUT CONFIGURATION
+5. DEMONSTRATION VOICE COMMANDS
+--------------------------------------------------
+- "Open Chrome"        -> Opens Google Chrome
+- "Open Microsoft Edge" -> Opens Microsoft Edge
+- "Open Notepad"       -> Opens Windows Notepad
+- "Open Microsoft Word" -> Opens Microsoft Word (Word 2016.lnk)
+- "Open Calculator"    -> Opens Windows Calculator (calc.exe)
+- "Close IRIS"         -> Clean application exit
+
+--------------------------------------------------
+6. V2.4 VOICE OUTPUT CONFIGURATION NOTICE
 --------------------------------------------------
 For V2.4 Submission Stability Mode:
 - Voice Input  = ENABLED
@@ -105,59 +107,17 @@ For V2.4 Submission Stability Mode:
 This design decision prevents audio feedback/self-hearing during hackathon demonstration.
 
 --------------------------------------------------
-8. APPLICATION FEATURES AVAILABLE IN V2.4
+7. TROUBLESHOOTING
 --------------------------------------------------
-- Voice command input
-- Faster-Whisper offline speech recognition
-- Intent & entity understanding
-- Centralized DesktopAppResolver application launching
-- MediaPipe gaze tracking & eye cursor control
-- Eye-blink click interaction
-- Visual log feedback
-- Clean self-shutdown ("Close IRIS")
+- Camera Not Ready     : Close Zoom/Teams, check Windows Camera privacy, restart IRIS.
+- Microphone Not Ready : Check Windows Microphone privacy, click "Retry Microphone".
+- Cursor Not Moving    : Complete 9-point calibration, verify READY, click "Start Cursor Control".
+- App Command Reports "Not Found" : Requested app is not installed on system. IRIS cleanly reports status.
 
 --------------------------------------------------
-9. TROUBLESHOOTING
+8. SUBMISSION BUILD VERIFICATION
 --------------------------------------------------
-A. IRIS does not start:
-   Restart IRIS AI or verify port 8000 is not held by another process.
-B. Microphone not working:
-   Ensure Microphone access is ON in Windows Settings -> Privacy & Security.
-C. Camera feed inactive:
-   Ensure webcam is not exclusively held by Zoom/Teams, then restart IRIS AI.
-D. App phrase reports "Could Not Be Found":
-   Requested app is not installed on system. IRIS cleanly reports status.
-E. Installer fails:
-   Verify IRIS-AI-V2.4-Setup.exe size is approx. 363.69 MB.
-
---------------------------------------------------
-10. UNINSTALLATION
---------------------------------------------------
-Open Windows Settings -> Apps -> Installed apps -> Search "IRIS AI" -> Uninstall.
-
---------------------------------------------------
-11. QUICK DEMONSTRATION GUIDE FOR JUDGES
---------------------------------------------------
-1. Launch IRIS AI from Desktop shortcut.
-2. View Dashboard diagnostics.
-3. Voice command: "Open Chrome"
-4. Voice command: "Open Calculator"
-5. Voice command: "Open Settings"
-6. Gaze tracking: Move eyes across screen.
-7. Self-close: "Close IRIS"
-
---------------------------------------------------
-12. OFFLINE & PRIVACY
---------------------------------------------------
-- Internet Requirement: 0% (100% Offline)
-- All speech recognition, gaze detection, and desktop control run locally.
-- Zero audio, video, or user data is transmitted externally.
-
---------------------------------------------------
-13. VERSION INFORMATION
---------------------------------------------------
-Application : IRIS AI
-Version     : V2.4
-Installer   : IRIS-AI-V2.4-Setup.exe (363.69 MB)
-Platform    : Windows 10 / 11 (64-bit)
-Hackathon   : IBM SkillsBuild Hackathon
+- Test Suite      : 74 / 74 PASSED (100% Green)
+- Frontend Build  : Vite compiled cleanly in 1.31s
+- Installer Size  : 363.69 MB
+- Offline Model   : 138.49 MB model.bin included

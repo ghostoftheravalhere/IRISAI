@@ -1,14 +1,13 @@
 # IRIS AI
 **Intelligent Responsive Interface System** — an AI-powered accessibility platform enabling hands-free computer control via webcam eye tracking, voice commands, desktop automation, and Gemini AI assistance.
 
-## Windows Installer — V2.4 Submission
+## Quick Start — IBM Submission
 
 IRIS AI V2.4 is packaged as a **production-ready Windows Installer** for the IBM SkillsBuild Hackathon.
 
-- **Standalone Installer**: [`IRIS-AI-V2.4-Setup.exe`](docs/INSTALLATION.md) (~256 MB)
-- **Portable Executable**: `IRIS-AI-V2.4-Portable.exe` (~256 MB)
-- **No Dependencies Required**: Bundled standalone Python 3.12 runtime, FastAPI backend, Faster-Whisper, MediaPipe, PyAutoGUI, and the offline `whisper-base` AI model. **0 Python/Node installation or terminal commands required by judges.**
-- **Deployment Guide**: See [`docs/INSTALLATION.md`](docs/INSTALLATION.md) for full installation, launch, and uninstallation steps.
+- **Standalone Installer**: [`frontend/release/IRIS-AI-V2.4-Setup.exe`](docs/INSTALLATION_GUIDE.md) (**363.69 MB**)
+- **No Setup Required**: Bundled standalone Python 3.12 runtime, FastAPI backend, Faster-Whisper, MediaPipe, PyAutoGUI, and the offline `whisper-base` AI model. **0 Python/Node.js installation or terminal commands required by judges.**
+- **Judge Demonstration Guide**: See [`docs/INSTALLATION_GUIDE.md`](docs/INSTALLATION_GUIDE.md) for step-by-step installation, eye-gaze calibration, voice commands, and troubleshooting.
 
 ## Tech Stack
 | Layer | Technology |
