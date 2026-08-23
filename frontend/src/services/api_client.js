@@ -187,6 +187,15 @@ export class IRISApiClient {
     }
   }
 
+  static async disableCursor() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/eye/cursor/disable`, { method: "POST" });
+      return await res.json();
+    } catch (e) {
+      return { enabled: false, error: e.message };
+    }
+  }
+
   static async getGoogleStatus() {
     try {
       const res = await fetch(`${API_BASE_URL}/api/auth/google/status`);

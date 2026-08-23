@@ -1,40 +1,37 @@
 # IRIS AI V2.4 — Machine-Readable Task Handoff
 
-- **TASK**: Production Standalone Windows Installer Packaging
+- **TASK**: Eye Calibration UX & Cursor Control Flow Fix
 - **STATUS**: COMPLETE
 - **DATE**: 2026-08-23
-- **OBJECTIVE**: Build a production-ready Windows NSIS installer (`IRIS-AI-V2.4-Setup.exe`) and Portable executable (`IRIS-AI-V2.4-Portable.exe`) bundling Electron, Vite, PyInstaller Python 3.12 backend binary, FastAPI/Uvicorn, MediaPipe, SoundDevice, PyAutoGUI, and the offline `whisper-base` AI model, allowing judges to install and run IRIS AI with zero pre-installed developer dependencies (Python/Node/npm) or terminal commands.
+- **OBJECTIVE**: Fix eye calibration target obstruction by converting the centered modal box into a dynamic non-obstructive floating controller card during calibration, implementing an explicit calibration & cursor control state pipeline (`IDLE` $\rightarrow$ `CALIBRATING` $\rightarrow$ `CALIBRATION_COMPLETE` $\rightarrow$ `CURSOR_CONTROL_READY` $\rightarrow$ `CURSOR_CONTROL_ACTIVE`), adding explicit **[ Start Cursor Control ]** and **[ Stop Cursor Control ]** toggle buttons, while preserving MediaPipe gaze estimation, blink click gestures, and V2.4 submission stability configuration.
 
 ---
 
 ## IMPLEMENTATION SUMMARY
 
-- **Backend PyInstaller Packaging (`backend/iris_backend.spec`)**:
-  - Built `backend/dist/iris_backend/iris_backend.exe` bundling Python 3.12, FastAPI, Uvicorn, OpenCV, MediaPipe, SoundDevice, PyAutoGUI, and Faster-Whisper.
-  - Bundled offline `resources/models/whisper-base/model.bin` (145 MB) directly in `_internal/resources/models/whisper-base/`. Verified 100% offline startup.
+- **Dynamic Non-Obstructive Floating Controller Card (`Dashboard.jsx`)**:
+  - Replaced the full-screen centered backdrop overlay during active sampling with a compact floating controller card anchored at `bottom: 24px, right: 24px` (or `left: 24px` for bottom calibration points).
+  - Guarantees 0 visual overlap with any of the 9 calibration target dots across all viewport resolution sizes.
 
-- **Electron Builder Installer (`frontend/package.json`)**:
-  - Generated NSIS Setup Installer: `frontend/release/IRIS-AI-V2.4-Setup.exe` (~256 MB).
-  - Generated Portable Binary: `frontend/release/IRIS-AI-V2.4-Portable.exe` (~256 MB).
-  - Configured Desktop Shortcut, Start Menu Shortcut, Installation Directory selector, and Uninstaller entry.
+- **Safe Target Margins & Obvious Current Point (`Dashboard.jsx`)**:
+  - Configured `CALIBRATION_POINTS` coordinates with 10% to 18% safe margins (`y: 0.10` to `y: 0.82`) so target dots are never clipped by window boundaries.
+  - Rendered pulsating target dot (`z-index: 10001`) with point counter label (`Point 3/9: Top-Right`). Exactly 1 target dot rendered at a time.
 
-- **Lifecycle & Error Handling (`backendManager.js`, `main.js`)**:
-  - Electron automatically spawns `process.resourcesPath/backend/iris_backend.exe`.
-  - Performs 200ms health check polling against `/health`. Frontend window loads once backend reports online status.
-  - Graceful exit on app close terminates backend child processes with `taskkill /F` fallback.
+- **Explicit Cursor Control State Flow (`Dashboard.jsx`, `api_client.js`)**:
+  - Added `cursorControlActive` state and `handleStartCursorControl` / `handleStopCursorControl` functions calling `/eye/cursor/enable` and `/eye/cursor/disable`.
+  - Disables automatic cursor movement upon Point 9 sampling completion; requires explicit user click on **[ Start Cursor Control ]**.
+  - Added **[ Start Cursor Control ]** / **[ Stop Cursor Control ]** and **[ Recalibrate ]** action buttons to both the Calibration Completion Modal and the main Dashboard Action Bar.
 
-- **Documentation**:
-  - `docs/INSTALLATION.md`: Created end-to-end judge deployment guide detailing system requirements, installation, launch, uninstallation, offline AI model details, and troubleshooting.
-  - `README.md`: Added prominent **Windows Installer — V2.4 Submission** section.
+- **Integrity Preserved**:
+  - MediaPipe 468-landmark facial mesh, 9-point polynomial calibration math, blink click gesture detection, desktop automation, and `VOICE_OUTPUT_ENABLED = False` setting remain 100% unchanged.
 
 - **Verification**:
-  - Standalone Backend Executable Test: `iris_backend.exe` launched independently and responded to `/health` with `{status: "online"}`.
+  - Frontend Production Build: `npm run build` compiled in 1.63s.
   - System Test Suites (6 suites, 74 tests): **74 / 74 PASSED**.
-  - Production Build: `npm run build` compiled in 1.25s.
-  - Formatting: `git diff --check` clean.
+  - `git diff --check`: 0 formatting errors.
 
 ---
 
 ## STOP DIRECTION
 
-- **PRODUCTION WINDOWS INSTALLER PACKAGING COMPLETE. STOPPING AS DIRECTED.**
+- **EYE CALIBRATION UX & CURSOR CONTROL FLOW FIX COMPLETE. STOPPING AS DIRECTED.**

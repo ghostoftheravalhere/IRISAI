@@ -219,21 +219,40 @@ export default function Dashboard() {
   }, []);
 
   const CALIBRATION_POINTS = [
-    { index: 0, x: 0.1, y: 0.1, label: "Top-Left (1/9)" },
-    { index: 1, x: 0.5, y: 0.1, label: "Top-Center (2/9)" },
-    { index: 2, x: 0.9, y: 0.1, label: "Top-Right (3/9)" },
-    { index: 3, x: 0.1, y: 0.5, label: "Middle-Left (4/9)" },
-    { index: 4, x: 0.5, y: 0.5, label: "Center (5/9)" },
-    { index: 5, x: 0.9, y: 0.5, label: "Middle-Right (6/9)" },
-    { index: 6, x: 0.1, y: 0.9, label: "Bottom-Left (7/9)" },
-    { index: 7, x: 0.5, y: 0.9, label: "Bottom-Center (8/9)" },
-    { index: 8, x: 0.9, y: 0.9, label: "Bottom-Right (9/9)" },
+    { index: 0, x: 0.10, y: 0.10, label: "Top-Left (1/9)" },
+    { index: 1, x: 0.50, y: 0.10, label: "Top-Center (2/9)" },
+    { index: 2, x: 0.90, y: 0.10, label: "Top-Right (3/9)" },
+    { index: 3, x: 0.10, y: 0.48, label: "Middle-Left (4/9)" },
+    { index: 4, x: 0.50, y: 0.48, label: "Center (5/9)" },
+    { index: 5, x: 0.90, y: 0.48, label: "Middle-Right (6/9)" },
+    { index: 6, x: 0.10, y: 0.82, label: "Bottom-Left (7/9)" },
+    { index: 7, x: 0.50, y: 0.82, label: "Bottom-Center (8/9)" },
+    { index: 8, x: 0.90, y: 0.82, label: "Bottom-Right (9/9)" },
   ];
 
   const [calibPointIndex, setCalibPointIndex] = useState(0);
   const [calibStatus, setCalibStatus] = useState("IDLE"); // CAMERA_STARTING, WAITING_FOR_FACE, CALIBRATING, CALIBRATION_COMPLETE, CALIBRATION_FAILED
   const [calibResultMsg, setCalibResultMsg] = useState("");
   const [isCapturingPoint, setIsCapturingPoint] = useState(false);
+  const [cursorControlActive, setCursorControlActive] = useState(false);
+
+  const handleStartCursorControl = async () => {
+    const res = await IRISApiClient.enableCursor();
+    if (res && res.error) {
+      setCalibResultMsg(`Failed to enable cursor control: ${res.error}`);
+    } else {
+      setCursorControlActive(true);
+      setCalibResultMsg("Cursor control is now ACTIVE.");
+      speakText("Cursor control active, sir.");
+    }
+  };
+
+  const handleStopCursorControl = async () => {
+    await IRISApiClient.disableCursor();
+    setCursorControlActive(false);
+    setCalibResultMsg("Cursor control is now PAUSED.");
+    speakText("Cursor control paused.");
+  };
 
   // Voice Controls
   const handleStartVoice = async () => {
@@ -356,11 +375,11 @@ export default function Dashboard() {
         setCalibResultMsg(msg);
         speakText("Calibration quality is low. Recalibration is recommended.");
       } else {
-        await IRISApiClient.enableCursor();
         setCalibStatus("CALIBRATION_COMPLETE");
+        setCursorControlActive(false);
         const scoreLabel = quality?.label || "Good";
         const rmseVal = quality?.rmse ? quality.rmse.toFixed(3) : "0.040";
-        const msg = `Quality: ${scoreLabel} (RMSE: ${rmseVal}) — Cursor control ready ✓`;
+        const msg = `Quality: ${scoreLabel} (RMSE: ${rmseVal}) — Gaze calibration successfully completed. Cursor Control: READY.`;
         setCalibResultMsg(msg);
         speakText("Calibration complete, sir. Cursor control is ready.");
       }
@@ -483,6 +502,22 @@ export default function Dashboard() {
               🔄 Retry Microphone
             </button>
           )}
+          {calibStatus === "CALIBRATION_COMPLETE" && (
+            <button
+              onClick={cursorControlActive ? handleStopCursorControl : handleStartCursorControl}
+              style={{
+                padding: "0.6rem 1.4rem",
+                borderRadius: "8px",
+                border: cursorControlActive ? "1px solid #10b981" : "1px solid #3b82f6",
+                background: cursorControlActive ? "rgba(16, 185, 129, 0.2)" : "rgba(59, 130, 246, 0.2)",
+                color: cursorControlActive ? "#34d399" : "#60a5fa",
+                fontWeight: "600",
+                cursor: "pointer",
+              }}
+            >
+              {cursorControlActive ? "⏹ Stop Cursor Control" : "▶ Start Cursor Control"}
+            </button>
+          )}
           <button
             onClick={handleStartCalibration}
             style={{
@@ -495,7 +530,7 @@ export default function Dashboard() {
               cursor: "pointer",
             }}
           >
-            🎯 Calibrate
+            🎯 {calibStatus === "CALIBRATION_COMPLETE" ? "Recalibrate Gaze" : "Calibrate Gaze"}
           </button>
           <button
             onClick={() => setShowDiagnostics(true)}
@@ -528,7 +563,9 @@ export default function Dashboard() {
               <div>Voice Input: <span style={{ color: "#34d399" }}>Active ({voiceState})</span></div>
               <div>Voice Output: <span style={{ color: "#fbbf24" }}>Disabled (Visual Feedback - V2.4 Submission Scope)</span></div>
               <div>Person Recognition: <span style={{ color: "#34d399" }}>{worldSnapshot?.person?.name || "Rahul (Active)"}</span></div>
-              <div>Eye Gaze System: <span style={{ color: "#34d399" }}>{worldSnapshot?.gaze_target ? "READY" : "ACTIVE"}</span></div>
+              <div>Eye Gaze System: <span style={{ color: "#34d399" }}>{calibStatus === "CALIBRATION_COMPLETE" ? "CALIBRATED" : "ACTIVE"}</span></div>
+              <div>Cursor Control: <span style={{ color: cursorControlActive ? "#34d399" : "#fbbf24" }}>{cursorControlActive ? "ACTIVE" : calibStatus === "CALIBRATION_COMPLETE" ? "READY" : "DISABLED"}</span></div>
+              <div>Blink Gesture Detection: <span style={{ color: "#34d399" }}>ACTIVE</span></div>
               <div>WorldModel Context: <span style={{ color: "#34d399" }}>ONLINE</span></div>
             </div>
             <div style={{ textAlign: "right" }}>
@@ -551,72 +588,60 @@ export default function Dashboard() {
             bottom: 0,
             width: "100vw",
             height: "100vh",
-            background: "rgba(8, 9, 14, 0.96)",
+            background: calibStatus === "CALIBRATING" ? "rgba(8, 9, 14, 0.85)" : "rgba(8, 9, 14, 0.96)",
             zIndex: 9999,
             overflow: "hidden",
             userSelect: "none",
           }}
         >
-          {/* Top Compact Floating Instruction Panel */}
-          <div
-            style={{
-              position: "fixed",
-              top: "24px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              zIndex: 10002,
-              background: "#12131c",
-              border: "1px solid #3b82f6",
-              borderRadius: "12px",
-              padding: "0.85rem 1.5rem",
-              maxWidth: "520px",
-              width: "90%",
-              textAlign: "center",
-              boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
-            }}
-          >
-            <h4 style={{ color: "#60a5fa", margin: 0, fontSize: "1.1rem", fontWeight: "600" }}>
-              🎯 9-Point Eye Gaze Calibration
-            </h4>
-            <div style={{ fontSize: "0.8rem", color: "#9ca3af", margin: "0.35rem 0", display: "flex", justifyContent: "center", gap: "1.25rem" }}>
-              <span>Camera: <strong style={{ color: calibStatus !== "CALIBRATION_FAILED" ? "#34d399" : "#f87171" }}>{calibStatus === "CAMERA_STARTING" ? "Starting..." : calibStatus === "CALIBRATION_FAILED" ? "Unavailable" : "Ready"}</strong></span>
-              <span>Face Tracking: <strong style={{ color: "#34d399" }}>{worldSnapshot?.person?.name ? "Detected" : "Active"}</strong></span>
-              <span>Point: <strong style={{ color: "#60a5fa" }}>{calibPointIndex + 1}/9</strong></span>
-            </div>
-
-            {calibStatus === "CAMERA_STARTING" && (
-              <p style={{ color: "#9ca3af", fontSize: "0.85rem", margin: "0.5rem 0" }}>Starting webcam capture and initializing MediaPipe FaceMesh...</p>
-            )}
-
-            {calibStatus === "WAITING_FOR_FACE" && (
-              <p style={{ color: "#facc15", fontSize: "0.85rem", margin: "0.5rem 0" }}>Please position your face in front of the camera.</p>
-            )}
-
-            {(calibStatus === "CALIBRATING" || calibStatus === "CALIBRATION_COMPLETE") && (
-              <p style={{ color: "#e5e7eb", fontSize: "0.85rem", margin: "0.25rem 0 0.75rem 0" }}>
-                {calibStatus === "CALIBRATION_COMPLETE"
-                  ? "Calibration completed successfully!"
-                  : `Focus your eyes on the pulsating target dot at ${CALIBRATION_POINTS[calibPointIndex].label} and click Sample Point.`}
-              </p>
-            )}
-
-            {calibResultMsg && (
-              <div style={{ background: calibStatus === "CALIBRATION_COMPLETE" ? "#064e3b" : "#7f1d1d", color: calibStatus === "CALIBRATION_COMPLETE" ? "#a7f3d0" : "#fca5a5", padding: "0.5rem", borderRadius: "6px", fontSize: "0.8rem", marginBottom: "0.5rem" }}>
-                {calibResultMsg}
+          {/* Non-Obstructive Floating Controller Card during CALIBRATING */}
+          {calibStatus === "CALIBRATING" && (
+            <div
+              style={{
+                position: "fixed",
+                bottom: "24px",
+                left: calibPointIndex >= 6 ? "24px" : "auto",
+                right: calibPointIndex >= 6 ? "auto" : "24px",
+                width: "360px",
+                zIndex: 10002,
+                background: "rgba(17, 24, 39, 0.95)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid #3b82f6",
+                borderRadius: "12px",
+                padding: "1rem 1.25rem",
+                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(59, 130, 246, 0.3)",
+                color: "#f3f4f6",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                <div style={{ fontWeight: "700", fontSize: "0.95rem", color: "#60a5fa", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span>🎯</span>
+                  <span>9-Point Eye Calibration</span>
+                </div>
+                <span style={{ fontSize: "0.8rem", background: "#1e3a8a", color: "#93c5fd", padding: "2px 8px", borderRadius: "12px", fontWeight: "600" }}>
+                  Point {calibPointIndex + 1} / 9
+                </span>
               </div>
-            )}
 
-            <div style={{ display: "flex", justifyContent: "center", gap: "0.75rem", marginTop: "0.5rem" }}>
-              {calibStatus === "CALIBRATING" && (
+              <div style={{ fontSize: "0.85rem", color: "#d1d5db", margin: "0.4rem 0" }}>
+                Target Position: <strong style={{ color: "#ffffff" }}>{CALIBRATION_POINTS[calibPointIndex].label}</strong>
+              </div>
+
+              <p style={{ fontSize: "0.8rem", color: "#9ca3af", margin: "0.4rem 0 0.75rem 0", lineHeight: "1.3" }}>
+                Focus your eyes on the pulsating target dot, then click <strong>Sample Point</strong>.
+              </p>
+
+              <div style={{ display: "flex", gap: "0.5rem" }}>
                 <button
                   onClick={handleCapturePoint}
                   disabled={isCapturingPoint}
                   style={{
-                    padding: "0.5rem 1.25rem",
+                    flex: 1,
+                    padding: "0.55rem 1rem",
                     borderRadius: "6px",
                     background: "#2563eb",
                     border: "none",
-                    color: "#fff",
+                    color: "#ffffff",
                     fontWeight: "600",
                     fontSize: "0.85rem",
                     cursor: isCapturingPoint ? "not-allowed" : "pointer",
@@ -624,45 +649,157 @@ export default function Dashboard() {
                 >
                   {isCapturingPoint ? "Sampling..." : `Sample Point ${calibPointIndex + 1}/9 →`}
                 </button>
-              )}
 
-              {calibStatus === "CALIBRATION_FAILED" && (
                 <button
-                  onClick={handleStartCalibration}
+                  onClick={handleCloseCalibration}
                   style={{
-                    padding: "0.5rem 1.25rem",
+                    padding: "0.55rem 0.85rem",
                     borderRadius: "6px",
-                    background: "#2563eb",
-                    border: "none",
-                    color: "#fff",
-                    fontWeight: "600",
+                    background: "transparent",
+                    border: "1px solid #4b5563",
+                    color: "#9ca3af",
                     fontSize: "0.85rem",
                     cursor: "pointer",
                   }}
                 >
-                  🔄 Retry Calibration
+                  Cancel
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Centered Modal Card for Camera Setup, Complete, or Failed */}
+          {calibStatus !== "CALIBRATING" && (
+            <div
+              style={{
+                position: "fixed",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                zIndex: 10002,
+                background: "#12131c",
+                border: calibStatus === "CALIBRATION_COMPLETE" ? "1px solid #10b981" : "1px solid #3b82f6",
+                borderRadius: "16px",
+                padding: "1.75rem 2rem",
+                maxWidth: "520px",
+                width: "90%",
+                textAlign: "center",
+                boxShadow: "0 20px 40px rgba(0,0,0,0.8)",
+              }}
+            >
+              <h4 style={{ color: calibStatus === "CALIBRATION_COMPLETE" ? "#34d399" : "#60a5fa", margin: 0, fontSize: "1.25rem", fontWeight: "700" }}>
+                {calibStatus === "CALIBRATION_COMPLETE" ? "✓ Calibration Complete" : "🎯 9-Point Eye Gaze Calibration"}
+              </h4>
+
+              <div style={{ fontSize: "0.85rem", color: "#9ca3af", margin: "0.5rem 0 1rem 0", display: "flex", justifyContent: "center", gap: "1.25rem" }}>
+                <span>Camera: <strong style={{ color: calibStatus !== "CALIBRATION_FAILED" ? "#34d399" : "#f87171" }}>{calibStatus === "CAMERA_STARTING" ? "Starting..." : calibStatus === "CALIBRATION_FAILED" ? "Unavailable" : "Ready"}</strong></span>
+                <span>Face Tracking: <strong style={{ color: "#34d399" }}>{worldSnapshot?.person?.name ? "Detected" : "Active"}</strong></span>
+              </div>
+
+              {calibStatus === "CAMERA_STARTING" && (
+                <p style={{ color: "#9ca3af", fontSize: "0.9rem", margin: "1rem 0" }}>Starting webcam capture and initializing MediaPipe FaceMesh...</p>
               )}
 
-              <button
-                onClick={handleCloseCalibration}
-                style={{
-                  padding: "0.5rem 1rem",
-                  borderRadius: "6px",
-                  background: "transparent",
-                  border: "1px solid #4b5563",
-                  color: "#9ca3af",
-                  fontSize: "0.85rem",
-                  cursor: "pointer",
-                }}
-              >
-                {calibStatus === "CALIBRATION_COMPLETE" ? "Close" : "Cancel"}
-              </button>
-            </div>
-          </div>
+              {calibStatus === "WAITING_FOR_FACE" && (
+                <p style={{ color: "#facc15", fontSize: "0.9rem", margin: "1rem 0" }}>Please position your face in front of the camera.</p>
+              )}
 
-          {/* Full-Viewport Calibration Target (Rendered at exact normalized viewport position) */}
-          {(calibStatus === "CALIBRATING" || calibStatus === "CALIBRATION_COMPLETE") && (
+              {calibStatus === "CALIBRATION_COMPLETE" && (
+                <div>
+                  <p style={{ color: "#e5e7eb", fontSize: "0.95rem", fontWeight: "500", margin: "0.5rem 0" }}>
+                    Eye gaze calibration successfully completed.
+                  </p>
+                  {calibResultMsg && (
+                    <div style={{ background: "#064e3b", color: "#a7f3d0", padding: "0.75rem", borderRadius: "8px", fontSize: "0.85rem", margin: "0.75rem 0 1.25rem 0" }}>
+                      {calibResultMsg}
+                    </div>
+                  )}
+                  <div style={{ background: "rgba(16, 185, 129, 0.1)", border: "1px solid #059669", borderRadius: "8px", padding: "0.5rem 1rem", color: "#34d399", fontSize: "0.85rem", fontWeight: "600", marginBottom: "1.25rem" }}>
+                    Status: Cursor Control {cursorControlActive ? "ACTIVE" : "READY"}
+                  </div>
+                </div>
+              )}
+
+              {calibStatus === "CALIBRATION_FAILED" && (
+                <div style={{ background: "#7f1d1d", color: "#fca5a5", padding: "0.75rem", borderRadius: "8px", fontSize: "0.85rem", margin: "0.75rem 0 1.25rem 0" }}>
+                  {calibResultMsg || "Calibration quality is low. Please retry calibration."}
+                </div>
+              )}
+
+              <div style={{ display: "flex", justifyContent: "center", gap: "0.75rem", marginTop: "0.5rem" }}>
+                {calibStatus === "CALIBRATION_COMPLETE" && (
+                  <>
+                    <button
+                      onClick={cursorControlActive ? handleStopCursorControl : handleStartCursorControl}
+                      style={{
+                        padding: "0.6rem 1.4rem",
+                        borderRadius: "8px",
+                        background: cursorControlActive ? "#ef4444" : "#2563eb",
+                        border: "none",
+                        color: "#fff",
+                        fontWeight: "600",
+                        fontSize: "0.9rem",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {cursorControlActive ? "⏹ Stop Cursor Control" : "▶ Start Cursor Control"}
+                    </button>
+                    <button
+                      onClick={handleStartCalibration}
+                      style={{
+                        padding: "0.6rem 1.2rem",
+                        borderRadius: "8px",
+                        background: "transparent",
+                        border: "1px solid #3b82f6",
+                        color: "#60a5fa",
+                        fontWeight: "600",
+                        fontSize: "0.9rem",
+                        cursor: "pointer",
+                      }}
+                    >
+                      🔄 Recalibrate
+                    </button>
+                  </>
+                )}
+
+                {calibStatus === "CALIBRATION_FAILED" && (
+                  <button
+                    onClick={handleStartCalibration}
+                    style={{
+                      padding: "0.6rem 1.4rem",
+                      borderRadius: "8px",
+                      background: "#2563eb",
+                      border: "none",
+                      color: "#fff",
+                      fontWeight: "600",
+                      fontSize: "0.9rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    🔄 Retry Calibration
+                  </button>
+                )}
+
+                <button
+                  onClick={handleCloseCalibration}
+                  style={{
+                    padding: "0.6rem 1.25rem",
+                    borderRadius: "8px",
+                    background: "transparent",
+                    border: "1px solid #4b5563",
+                    color: "#9ca3af",
+                    fontSize: "0.9rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  {calibStatus === "CALIBRATION_COMPLETE" ? "Done" : "Cancel"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Full-Viewport Calibration Target Dot (Rendered at exact normalized viewport position) */}
+          {calibStatus === "CALIBRATING" && (
             <div
               style={{
                 position: "absolute",
