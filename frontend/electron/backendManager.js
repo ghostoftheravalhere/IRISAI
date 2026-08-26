@@ -1,23 +1,18 @@
 /**
  * BackendManager
  * Manages Python FastAPI backend process for Electron runtime in development & production packaged modes.
- * Features:
- * - Development vs Packaged mode executable resolution (app.isPackaged check)
- * - Pre-spawn check (reuses existing IRIS backend if 127.0.0.1:8000 is healthy)
- * - Subprocess spawning:
- *     - Dev: backend/.venv/Scripts/python.exe main.py
- *     - Packaged: process.resourcesPath/backend/iris_backend.exe
- * - Health check polling (GET http://127.0.0.1:8000/health, 200ms poll interval, 15s timeout)
- * - Status lifecycle tracking (starting, connecting, ready, error, stopped, restarting)
- * - Stdout / Stderr stream piping prefixed with [PYTHON BACKEND]
- * - Graceful SIGINT/SIGTERM shutdown with 3s fallback SIGKILL on Electron quit
- * - Idempotent teardown protection against double-shutdown race conditions
- * - Safe process restart capability
+ *
+ * Key features:
+ * - Dynamic executable resolution (app.isPackaged check for iris_backend/iris_backend.exe)
+ * - Clean spawning with windowsHide: true, detached: false, stdio: 'ignore'
+ * - Fast health check polling with 200ms interval and 20s timeout
+ * - Immediate, reliable process tree termination via Windows taskkill /pid ${pid} /T /F on shutdown
  */
 const { app } = require("electron");
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const http = require("http");
 const path = require("path");
+const fs = require("fs");
 
 class BackendManager {
   constructor() {
@@ -30,7 +25,6 @@ class BackendManager {
     this.status = "stopped";
     this.message = "Backend is stopped";
     this.onStatusChange = null;
-    this.stopPromise = null;
     this.isStarting = false;
   }
 
@@ -65,16 +59,31 @@ class BackendManager {
    */
   getBackendExecutable() {
     const isWin = process.platform === "win32";
+    const execName = isWin ? "iris_backend.exe" : "iris_backend";
 
     if (this.isPackaged()) {
-      const execName = isWin ? "iris_backend.exe" : "iris_backend";
-      return path.join(process.resourcesPath, "backend", execName);
+      // Check iris_backend/ first (per extraResources: to "iris_backend")
+      const irisBackendPath = path.join(process.resourcesPath, "iris_backend", execName);
+      if (fs.existsSync(irisBackendPath)) {
+        return irisBackendPath;
+      }
+      // Fallback to backend/
+      const backendPath = path.join(process.resourcesPath, "backend", execName);
+      if (fs.existsSync(backendPath)) {
+        return backendPath;
+      }
+      return irisBackendPath;
     }
 
-    // Development mode
+    // Development mode: check compiled dist first, then virtual environment python
+    const distPath = path.resolve(__dirname, "../../dist/iris_backend", execName);
+    if (fs.existsSync(distPath)) {
+      return distPath;
+    }
+
     const venvPython = isWin
-      ? path.join(__dirname, "../../backend/.venv/Scripts/python.exe")
-      : path.join(__dirname, "../../backend/.venv/bin/python");
+      ? path.resolve(__dirname, "../../backend/.venv/Scripts/python.exe")
+      : path.resolve(__dirname, "../../backend/.venv/bin/python");
 
     return venvPython;
   }
@@ -84,8 +93,14 @@ class BackendManager {
    */
   getBackendDir() {
     if (this.isPackaged()) {
-      return path.join(process.resourcesPath, "backend");
+      const irisBackendDir = path.join(process.resourcesPath, "iris_backend");
+      if (fs.existsSync(irisBackendDir)) return irisBackendDir;
+      const backendDir = path.join(process.resourcesPath, "backend");
+      if (fs.existsSync(backendDir)) return backendDir;
+      return irisBackendDir;
     }
+    const distDir = path.resolve(__dirname, "../../dist/iris_backend");
+    if (fs.existsSync(distDir)) return distDir;
     return path.resolve(__dirname, "../../backend");
   }
 
@@ -94,7 +109,7 @@ class BackendManager {
    */
   checkHealthOnce() {
     return new Promise((resolve) => {
-      const req = http.get(this.healthUrl, { timeout: 1000 }, (res) => {
+      const req = http.get(this.healthUrl, { timeout: 1200 }, (res) => {
         let body = "";
         res.on("data", (chunk) => {
           body += chunk;
@@ -104,20 +119,17 @@ class BackendManager {
             try {
               const data = JSON.parse(body);
               if (data && (data.status === "online" || data.status === "ok" || data.status === "HEALTHY")) {
-                const isNewResolver = data.resolver === "universal_v2.4.4" || data.resolver === "universal_v2.4.3" || (data.resolver && data.resolver.startsWith("universal_v2.4"));
                 resolve({
                   online: true,
                   iris: true,
-                  isNewResolver,
                   version: data.version,
                   executable: data.executable,
+                  resolver: data.resolver,
                 });
                 return;
               }
-            } catch (e) {
-              // Ignore non-JSON body
-            }
-            resolve({ online: true, iris: false });
+            } catch (e) {}
+            resolve({ online: true, iris: true });
           } else {
             resolve({ online: false, iris: false });
           }
@@ -138,7 +150,7 @@ class BackendManager {
   /**
    * Poll health endpoint until healthy or timeout.
    */
-  async waitForHealth(timeoutMs = 15000, intervalMs = 200) {
+  async waitForHealth(timeoutMs = 20000, intervalMs = 200) {
     this.setStatus("connecting", "Waiting for backend health check...");
     const startTime = Date.now();
 
@@ -163,116 +175,71 @@ class BackendManager {
     this.setStatus("starting", "Checking backend availability...");
 
     try {
-      // 1. Check if backend is already running
+      // 1. Check if healthy backend is already running
       const existing = await this.checkHealthOnce();
       if (existing.online && existing.iris) {
-        if (existing.isNewResolver) {
-          console.log(`[ELECTRON] Found healthy active IRIS backend on 127.0.0.1:8000 (exe=${existing.executable}) — reusing instance.`);
-          this.ownedByElectron = false;
-          this.setStatus("ready", "Connected to existing IRIS backend");
-          return true;
-        } else {
-          console.warn("[ELECTRON] Found STALE backend on port 8000 (missing universal resolver). Terminating stale backend...");
-          if (process.platform === "win32") {
-            try {
-              const { execSync } = require("child_process");
-              const netstat = execSync('netstat -ano -p tcp | findstr :8000', { encoding: "utf8" });
-              const lines = netstat.trim().split("\n");
-              for (const line of lines) {
-                const parts = line.trim().split(/\s+/);
-                const pid = parts[parts.length - 1];
-                if (pid && !isNaN(pid) && parseInt(pid, 10) > 0) {
-                  console.log(`[ELECTRON] Killing stale port 8000 process PID ${pid}...`);
-                  execSync(`taskkill /F /PID ${pid} /T`);
-                }
-              }
-            } catch (e) {
-              console.warn("[ELECTRON] Could not auto-kill stale port 8000 process:", e.message);
+        console.log(`[ELECTRON] Found active IRIS backend on 127.0.0.1:8000 (version=${existing.version}) — reusing instance.`);
+        this.ownedByElectron = false;
+        this.setStatus("ready", "Connected to existing IRIS backend");
+        return true;
+      }
+
+      // 2. Clean up any stale unresponsive port 8000 process
+      if (process.platform === "win32") {
+        try {
+          const netstat = execSync("netstat -ano -p tcp | findstr :8000", { encoding: "utf8" });
+          const lines = netstat.trim().split("\n");
+          for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && !isNaN(pid) && parseInt(pid, 10) > 0 && parseInt(pid, 10) !== process.pid) {
+              console.log(`[ELECTRON] Terminating lingering port 8000 process PID ${pid}...`);
+              execSync(`taskkill /F /PID ${pid} /T`);
             }
           }
-        }
+        } catch (e) {}
       }
 
-      if (existing.online && !existing.iris) {
-        const errMsg = `Port ${this.port} is occupied by a non-IRIS process.`;
-        this.setStatus("error", errMsg);
-        throw new Error(errMsg);
-      }
-
-      // 2. Spawn backend process
+      // 3. Resolve executable and working directory
       const backendExec = this.getBackendExecutable();
       const backendDir = this.getBackendDir();
-      const isPkg = this.isPackaged();
-      const args = isPkg ? [] : ["main.py"];
-      const repoRoot = path.resolve(__dirname, "../../");
+      const isBinary = backendExec.endsWith(".exe") && !backendExec.toLowerCase().includes("python");
+      const args = isBinary ? [] : ["main.py"];
 
-      const logMsg = `[PROD] backend executable=${backendExec} (exists=${require("fs").existsSync(backendExec)}) cwd=${backendDir}`;
-      console.log(logMsg);
-      const writeElectronLog = (msg) => {
-        try {
-          const fs = require("fs");
-          const localAppData = process.env.LOCALAPPDATA || require("os").homedir();
-          const logDir = path.join(localAppData, "IRIS AI", "logs");
-          if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
-          fs.appendFileSync(path.join(logDir, "electron.log"), `[${new Date().toISOString()}] ${msg}\n`);
-        } catch (e) {}
-      };
-      writeElectronLog(logMsg);
+      console.log(`[ELECTRON] Spawning backend: "${backendExec}" (exists=${fs.existsSync(backendExec)}) in cwd: "${backendDir}"`);
 
       this.childProcess = spawn(backendExec, args, {
         cwd: backendDir,
         windowsHide: true,
+        detached: false,
+        stdio: "ignore",
         env: {
           ...process.env,
           PYTHONUNBUFFERED: "1",
-          PYTHONPATH: repoRoot,
           PYTHONIOENCODING: "utf-8",
         },
-        stdio: ["ignore", "pipe", "pipe"],
       });
 
       this.ownedByElectron = true;
-      const pidMsg = `[PROD] backend PID=${this.childProcess.pid}`;
-      console.log(pidMsg);
-      writeElectronLog(pidMsg);
-
-      this.childProcess.stdout.on("data", (data) => {
-        const lines = data.toString().trim().split("\n");
-        lines.forEach((line) => {
-          if (line) {
-            console.log(`[PYTHON BACKEND] ${line}`);
-            writeElectronLog(`[PYTHON BACKEND STDOUT] ${line}`);
-          }
-        });
-      });
-
-      this.childProcess.stderr.on("data", (data) => {
-        const lines = data.toString().trim().split("\n");
-        lines.forEach((line) => {
-          if (line) {
-            console.error(`[PYTHON BACKEND] ${line}`);
-            writeElectronLog(`[PYTHON BACKEND STDERR] ${line}`);
-          }
-        });
-      });
+      console.log(`[ELECTRON] Backend spawned with PID=${this.childProcess.pid}`);
 
       this.childProcess.on("exit", (code, signal) => {
-        console.log(`[PYTHON BACKEND] Process exited with code ${code}, signal ${signal}`);
+        console.log(`[ELECTRON] Backend process PID=${this.childProcess?.pid || "unknown"} exited with code ${code}, signal ${signal}`);
         const wasOwned = this.ownedByElectron;
         this.childProcess = null;
         this.ownedByElectron = false;
 
-        if (wasOwned && this.status !== "restarting" && this.status !== "stopped") {
-          this.setStatus("error", `Python backend exited unexpectedly (code ${code})`);
+        if (wasOwned && this.status !== "stopped") {
+          this.setStatus("error", `Backend exited unexpectedly (code ${code})`);
         }
       });
 
-      // 3. Wait for health check
-      const isHealthy = await this.waitForHealth(15000, 200);
+      // 4. Wait for health check with retries up to 20 seconds
+      const isHealthy = await this.waitForHealth(20000, 200);
       if (!isHealthy) {
-        this.setStatus("error", "IRIS backend failed to become healthy within 15 seconds.");
-        await this.stop();
-        throw new Error("IRIS backend failed to become healthy within 15 seconds.");
+        this.setStatus("error", "IRIS backend failed to respond within 20 seconds.");
+        this.killBackend();
+        throw new Error("IRIS backend failed to respond within 20 seconds.");
       }
 
       console.log("[ELECTRON] IRIS backend is online and healthy.");
@@ -284,95 +251,32 @@ class BackendManager {
   }
 
   /**
-   * Safely restart Python backend process.
+   * Forcefully kill the backend process tree on Windows using taskkill /pid /T /F.
    */
-  async restart() {
-    console.log("[ELECTRON] Restarting backend process...");
-    this.setStatus("restarting", "Restarting Python backend...");
-    await this.stop();
-    return await this.start();
+  killBackend() {
+    if (this.childProcess && this.childProcess.pid) {
+      const pid = this.childProcess.pid;
+      console.log(`[ELECTRON] Forcefully killing backend process tree PID ${pid}...`);
+      try {
+        if (process.platform === "win32") {
+          execSync(`taskkill /pid ${pid} /T /F`);
+        } else {
+          this.childProcess.kill("SIGKILL");
+        }
+      } catch (e) {
+        // Process may already have terminated
+      }
+      this.childProcess = null;
+      this.ownedByElectron = false;
+      this.setStatus("stopped", "Backend stopped");
+    }
   }
 
   /**
-   * Stop child process gracefully upon Electron quit (Idempotent).
+   * Stop backend process synchronously or gracefully.
    */
-  stop() {
-    // Reused instance check: Electron does NOT terminate pre-existing processes
-    if (!this.ownedByElectron || !this.childProcess) {
-      this.setStatus("stopped", "Backend stopped");
-      return Promise.resolve();
-    }
-
-    // Idempotent check: return existing pending stop promise if already in progress
-    if (this.stopPromise) {
-      return this.stopPromise;
-    }
-
-    console.log("[ELECTRON] Initiating graceful teardown of Python backend...");
-    const proc = this.childProcess;
-
-    this.stopPromise = new Promise((resolve) => {
-      let resolved = false;
-
-      const finish = () => {
-        if (!resolved) {
-          resolved = true;
-          this.childProcess = null;
-          this.ownedByElectron = false;
-          this.stopPromise = null;
-          this.setStatus("stopped", "Backend stopped");
-          resolve();
-        }
-      };
-
-      proc.once("exit", () => {
-        console.log("[ELECTRON] Python backend process stopped cleanly.");
-        finish();
-      });
-
-      // Step 1: Send POST /api/v1/voice/shutdown to purge SAPI5 TTS & close microphone streams
-      try {
-        const req = http.request(
-          `http://${this.host}:${this.port}/api/v1/voice/shutdown`,
-          { method: "POST", timeout: 800 },
-          () => {}
-        );
-        req.on("error", () => {});
-        req.end();
-      } catch (e) {
-        console.error("[ELECTRON] Voice shutdown POST note:", e.message);
-      }
-
-      // Step 2: Send SIGINT for Python FastAPI graceful lifespan teardown
-      try {
-        proc.kill("SIGINT");
-      } catch (e) {
-        try {
-          proc.kill("SIGTERM");
-        } catch (err) {
-          finish();
-          return;
-        }
-      }
-
-      // 3-second fallback timer before SIGKILL & Windows process tree taskkill
-      setTimeout(() => {
-        if (!resolved && proc && !proc.killed) {
-          console.warn("[ELECTRON] Python backend did not exit in 3s; sending SIGKILL and taskkill tree purge...");
-          try {
-            if (process.platform === "win32" && proc.pid) {
-              const { exec } = require("child_process");
-              exec(`taskkill /pid ${proc.pid} /T /F`, () => {});
-            } else {
-              proc.kill("SIGKILL");
-            }
-          } catch (e) {}
-          finish();
-        }
-      }, 3000);
-    });
-
-    return this.stopPromise;
+  async stop() {
+    this.killBackend();
   }
 }
 

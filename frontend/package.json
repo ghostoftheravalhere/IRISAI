@@ -30,7 +30,10 @@
     "extraResources": [
       {
         "from": "../dist/iris_backend",
-        "to": "backend"
+        "to": "iris_backend",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {

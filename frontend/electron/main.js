@@ -4,6 +4,7 @@
  * - Dev: loads Vite dev server + opens DevTools
  * - Prod: loads built dist/index.html
  * - Manages Python backend lifecycle via BackendManager & exposes IPC handlers
+ * - Ensures synchronous, non-orphaning backend process termination on Windows exit
  */
 const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
@@ -74,7 +75,7 @@ function createWindow() {
     logProd(`[PROD CRITICAL] Render process gone: ${JSON.stringify(details)}`);
   });
 
-  if (isDev && process.processEnvViteDevServerUrl !== "false" && process.env.VITE_DEV_SERVER_URL !== "false") {
+  if (isDev && process.env.VITE_DEV_SERVER_URL !== "false") {
     const loadDevServer = async (retries = 10) => {
       for (let i = 0; i < retries; i++) {
         try {
@@ -108,7 +109,8 @@ ipcMain.handle("backend:get-status", () => {
 
 ipcMain.handle("backend:restart", async () => {
   try {
-    await backendManager.restart();
+    backendManager.killBackend();
+    await backendManager.start();
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -116,7 +118,8 @@ ipcMain.handle("backend:restart", async () => {
 });
 
 ipcMain.handle("app:quit", async () => {
-  console.log("[ELECTRON] Self-close IPC invoked ('Close IRIS'); closing application gracefully...");
+  console.log("[ELECTRON] Self-close IPC invoked ('Close IRIS'); closing application...");
+  cleanupAndKillBackend();
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.close();
   } else {
@@ -131,6 +134,14 @@ backendManager.onStatusChange = (statusState) => {
   }
 };
 
+function cleanupAndKillBackend() {
+  try {
+    backendManager.killBackend();
+  } catch (e) {
+    console.error("[ELECTRON] Error in cleanupAndKillBackend:", e);
+  }
+}
+
 app.whenReady().then(async () => {
   try {
     await backendManager.start();
@@ -141,34 +152,35 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on("before-quit", async (event) => {
+app.on("before-quit", () => {
   if (isQuitting) return;
+  isQuitting = true;
+  cleanupAndKillBackend();
+});
 
-  if (backendManager.ownedByElectron && backendManager.childProcess) {
-    event.preventDefault();
-    isQuitting = true;
-    try {
-      await backendManager.stop();
-    } catch (err) {
-      console.error("[ELECTRON] Error stopping backend:", err);
-    } finally {
-      app.quit();
-    }
+app.on("will-quit", () => {
+  cleanupAndKillBackend();
+});
+
+app.on("window-all-closed", () => {
+  cleanupAndKillBackend();
+  if (process.platform !== "darwin") {
+    app.quit();
   }
 });
 
-app.on("window-all-closed", async () => {
-  if (process.platform !== "darwin") {
-    if (backendManager.ownedByElectron && backendManager.childProcess && !isQuitting) {
-      isQuitting = true;
-      try {
-        await backendManager.stop();
-      } catch (err) {
-        console.error("[ELECTRON] Error stopping backend on window-all-closed:", err);
-      }
-    }
-    app.quit();
-  }
+process.on("exit", () => {
+  cleanupAndKillBackend();
+});
+
+process.on("SIGINT", () => {
+  cleanupAndKillBackend();
+  process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+  cleanupAndKillBackend();
+  process.exit(0);
 });
 
 app.on("activate", () => {
