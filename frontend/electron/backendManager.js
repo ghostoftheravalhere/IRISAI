@@ -166,10 +166,10 @@ class BackendManager {
   }
 
   /**
-   * Poll health endpoint until healthy or timeout.
+   * Poll health endpoint until healthy or timeout (up to 60 seconds for cold-start unpacking).
    */
-  async waitForHealth(timeoutMs = 20000, intervalMs = 200) {
-    this.setStatus("connecting", "Waiting for backend health check...");
+  async waitForHealth(timeoutMs = 60000, intervalMs = 200) {
+    this.setStatus("connecting", "Waiting for backend health check (cold-start initialization)...");
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeoutMs) {
@@ -252,12 +252,12 @@ class BackendManager {
         }
       });
 
-      // 4. Wait for health check with retries up to 20 seconds
-      const isHealthy = await this.waitForHealth(20000, 200);
+      // 4. Wait for health check with retries up to 60 seconds
+      const isHealthy = await this.waitForHealth(60000, 200);
       if (!isHealthy) {
-        this.setStatus("error", "IRIS backend failed to respond within 20 seconds.");
+        this.setStatus("error", "IRIS backend failed to respond within 60 seconds.");
         this.killBackend();
-        throw new Error("IRIS backend failed to respond within 20 seconds.");
+        throw new Error("IRIS backend failed to respond within 60 seconds.");
       }
 
       console.log("[ELECTRON] IRIS backend is online and healthy.");

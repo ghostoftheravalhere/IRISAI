@@ -39,7 +39,7 @@ export default function App() {
           });
         }
       } catch (e) {
-        if (isMounted) {
+        if (isMounted && !window.irisAPI) {
           setBackendState({
             status: "offline",
             message: "Backend unreachable at 127.0.0.1:8000",
