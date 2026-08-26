@@ -29,9 +29,8 @@ class EyeInteractionConfig:
     ear_smoothing_alpha: float = 0.35
 
     # --- Intentional blink timing (milliseconds) ---
-    # Natural blinks are typically 100–400 ms and must never click.
-    # Demo window is widened so judges can reliably hold a long blink.
-    intentional_blink_min_ms: float = 500.0
+    # Natural blinks are typically 100–350 ms and must never click.
+    intentional_blink_min_ms: float = 400.0
     intentional_blink_max_ms: float = 1200.0
     both_eye_coalesce_ms: float = 220.0
 
@@ -60,8 +59,8 @@ class EyeInteractionConfig:
     # Lower EMA alphas = heavier smoothing (less noisy, modest added lag).
     gaze_smoothing_alpha: float = 0.28
     cursor_sensitivity: float = 0.92
-    cursor_smoothing_alpha: float = 0.12
-    cursor_dead_zone_px: float = 28.0
+    cursor_smoothing_alpha: float = 0.20
+    cursor_dead_zone_px: float = 15.0
     cursor_min_move_px: float = 2.5
     cursor_edge_padding_px: int = 8
     cursor_move_duration_seconds: float = 0.0

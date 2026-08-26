@@ -43,7 +43,7 @@ class SpeechOutputManager:
                 logger.info("[TTS] Voice output disabled for V2.4 submission (text: '%s')", text[:60])
                 if self._event_bus:
                     self._event_bus.publish(SpeechStartedEvent(text=text))
-                    self._event_bus.publish(SpeechCompletedEvent(text=text, duration_ms=0.0))
+                    self._event_bus.publish(SpeechCompletedEvent(duration_ms=0.0))
                 return 0.0
 
             import os

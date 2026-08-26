@@ -143,7 +143,12 @@ def build_container(app_settings: Settings) -> AppContainer:
     )
 
     desktop_controller = DesktopController()
-    automation_dispatcher = AutomationDispatcher(desktop_controller)
+    automation_dispatcher = AutomationDispatcher(
+        desktop_controller=desktop_controller,
+        cursor_controller=cursor_controller,
+        eye_calibration=eye_calibration,
+        eye_config=eye_config,
+    )
     intent_parser = IntentParserService()
 
     intent_manager = IntentManager()

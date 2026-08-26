@@ -17,6 +17,9 @@ from backend.eye_tracking.calibration import (
 )
 from backend.eye_tracking.camera_service import CameraServiceError
 from backend.eye_tracking.face_mesh_service import EyeData, NormalizedLandmark
+from backend.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["eye_tracking"])
 
@@ -190,7 +193,16 @@ async def calibration_capture(request: Request) -> dict[str, object]:
 @router.get("/calibration/state", response_model=CalibrationStateResponse)
 async def calibration_state(request: Request) -> dict[str, object]:
     """Return the saved calibration state."""
-    return _serialize_state(request.app.state.eye_calibration.get_state())
+    state = request.app.state.eye_calibration.get_state()
+    logger.info(
+        "[DIAGNOSTIC] calibration_state called: completed=%s, mapping_valid=%s, quality=%s, rmse=%s, sample_count=%d",
+        state.complete,
+        state.mapping is not None,
+        state.quality.score if state.quality else None,
+        state.quality.rmse if state.quality else None,
+        len(state.samples),
+    )
+    return _serialize_state(state)
 
 
 @router.get("/calibration/mapping", response_model=CalibrationMappingResponse | None)
@@ -206,6 +218,15 @@ async def calibration_mapping(request: Request) -> dict[str, object] | None:
 async def cursor_enable(request: Request) -> dict[str, object]:
     """Enable cursor control after calibration quality is acceptable."""
     progress = request.app.state.eye_calibration.get_progress()
+    cursor_before = request.app.state.cursor_controller.get_state().enabled
+    logger.info(
+        "[DIAGNOSTIC] cursor_enable called: calibration_completed=%s, mapping_valid=%s, quality=%s, rmse=%s, cursor_enabled_before=%s",
+        progress.complete,
+        progress.quality is not None,
+        progress.quality.score if progress.quality else None,
+        progress.quality.rmse if progress.quality else None,
+        cursor_before,
+    )
     if not progress.complete:
         raise HTTPException(
             status_code=409,
@@ -223,14 +244,25 @@ async def cursor_enable(request: Request) -> dict[str, object]:
             ),
         )
 
-    return _serialize_cursor_state(request.app.state.cursor_controller.enable())
+    state = request.app.state.cursor_controller.enable()
+    logger.info(
+        "[DIAGNOSTIC] cursor_enable succeeded: cursor_enabled_after=%s, trackingActive=%s",
+        state.enabled,
+        state.trackingActive,
+    )
+    return _serialize_cursor_state(state)
 
 
 @router.post("/cursor/disable", response_model=CursorControllerResponse)
 async def cursor_disable(request: Request) -> dict[str, object]:
     """Disable cursor control and release drag / tracking state."""
     request.app.state.camera.reset_interaction_pipeline()
-    return _serialize_cursor_state(request.app.state.cursor_controller.get_state())
+    state = request.app.state.cursor_controller.get_state()
+    logger.info(
+        "[DIAGNOSTIC] cursor_disable called: cursor_enabled_after=%s",
+        state.enabled,
+    )
+    return _serialize_cursor_state(state)
 
 
 class OverlayModeRequest(BaseModel):

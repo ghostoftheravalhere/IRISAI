@@ -46,7 +46,7 @@ class DiagnosticsService:
             metrics_data = self._metrics_registry.get_metrics_summary()
 
         return {
-            "uptime_seconds": self.uptime_seconds,
+            "uptime_seconds": self.uptime_seconds(),
             "overall_health": overall_health,
             "components": health_data,
             "metrics": metrics_data,

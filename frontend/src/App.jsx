@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { HashRouter, Routes, Route } from "react-router-dom";
 import Dashboard from "./pages/Dashboard";
 import Camera from "./pages/Camera";
 import Calibration from "./pages/Calibration";
@@ -58,7 +58,7 @@ export default function App() {
   }, []);
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       {backendState.status !== "ready" && (
         <div
           style={{
@@ -98,6 +98,6 @@ export default function App() {
         <Route path="/calibration" element={<Calibration />} />
         <Route path="/voice" element={<Voice />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }

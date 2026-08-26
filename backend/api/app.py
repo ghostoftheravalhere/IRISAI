@@ -4,6 +4,7 @@ Creates and configures the FastAPI app with all routers and middleware.
 """
 import asyncio
 from contextlib import asynccontextmanager
+import sys
 import time
 from typing import Any
 
@@ -41,6 +42,9 @@ from backend.core.di.container import AppContainer, build_container
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+_recent_event_history: list[dict] = []
+_global_active_websockets: list[asyncio.Queue] = []
 
 
 @asynccontextmanager
@@ -125,9 +129,22 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/health")
     async def get_health_status():
         """Return runtime platform component health status and diagnostics."""
+        base_status = {
+            "status": "HEALTHY",
+            "version": settings.APP_VERSION,
+            "executable": sys.executable,
+            "is_frozen": getattr(sys, "frozen", False),
+            "resolver": "universal_v2.4.3",
+        }
         if hasattr(app.state, "diagnostics_service"):
-            return app.state.diagnostics_service.generate_snapshot()
-        return {"status": "HEALTHY"}
+            try:
+                snap = app.state.diagnostics_service.generate_snapshot()
+                if isinstance(snap, dict):
+                    snap.update(base_status)
+                    return snap
+            except Exception:
+                pass
+        return base_status
 
     @app.get("/api/v1/diagnostics")
     async def get_diagnostics():
@@ -147,52 +164,23 @@ def create_app() -> FastAPI:
             return app.state.metrics_registry.get_metrics_summary()
         return {}
 
+    @app.get("/api/v1/apps")
+    async def get_installed_apps():
+        """Diagnostic tool: Return all resolvable installed applications on this Windows computer."""
+        from backend.automation.app_resolver import app_resolver
+        return {"applications": app_resolver.list_installed_applications()}
+
+    @app.get("/api/v1/events/history")
+    async def get_event_history():
+        """Return recent EventBus history for Command Log state synchronization."""
+        return {"events": _recent_event_history[-50:]}
+
     @app.websocket("/ws/events")
     async def websocket_events_endpoint(websocket: WebSocket):
         """WebSocket endpoint for real-time domain telemetry and agent event streaming."""
         await websocket.accept()
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        loop = asyncio.get_running_loop()
-
-        def _on_domain_event(event: Any):
-            try:
-                event_dict = {
-                    "event_type": type(event).__name__,
-                    "timestamp": getattr(event, "timestamp", time.time()),
-                    "event_id": getattr(event, "event_id", ""),
-                }
-                for attr in ("raw_transcript", "intent", "intent_type", "action", "success", "execution_status", "rule_applied", "normalized_transcript", "plan_name", "plan_id", "steps", "step_index"):
-                    if hasattr(event, attr):
-                        val = getattr(event, attr)
-                        if isinstance(val, (list, tuple)):
-                            event_dict[attr] = [dict(s) if hasattr(s, "_asdict") else str(s) for s in val]
-                        else:
-                            event_dict[attr] = str(val)
-
-                loop.call_soon_threadsafe(queue.put_nowait, event_dict)
-            except Exception as e:
-                logger.debug("Error preparing event for WebSocket: %s", e)
-
-        event_bus = getattr(app.state, "event_bus", None)
-        subscribed_classes = []
-        if event_bus is not None:
-            try:
-                from backend.brain.workflow_events import WorkflowCompletedEvent, WorkflowFailedEvent, WorkflowStartedEvent, WorkflowStepCompletedEvent
-                from backend.voice.telemetry import AutomationExecutedEvent, IntentParsedEvent, TranscriptionCompletedEvent
-                subscribed_classes = [
-                    IntentParsedEvent,
-                    TranscriptionCompletedEvent,
-                    AutomationExecutedEvent,
-                    WorkflowStartedEvent,
-                    WorkflowStepCompletedEvent,
-                    WorkflowCompletedEvent,
-                    WorkflowFailedEvent,
-                ]
-                for ev_cls in subscribed_classes:
-                    event_bus.subscribe(ev_cls, _on_domain_event)
-            except Exception as e:
-                logger.warning("Could not subscribe WebSocket to event bus: %s", e)
-
+        _global_active_websockets.append(queue)
         try:
             while True:
                 try:
@@ -203,9 +191,8 @@ def create_app() -> FastAPI:
         except (WebSocketDisconnect, Exception) as exc:
             logger.info("WebSocket disconnected from /ws/events (%s)", exc)
         finally:
-            if event_bus is not None and subscribed_classes:
-                for ev_cls in subscribed_classes:
-                    event_bus.unsubscribe(ev_cls, _on_domain_event)
+            if queue in _global_active_websockets:
+                _global_active_websockets.remove(queue)
 
     return app
 
@@ -243,3 +230,39 @@ def _attach_container(app: FastAPI, container: AppContainer) -> None:
     app.state.voice = container.voice
     from backend.voice.speech_output import SpeechOutputManager
     app.state.speech_output_manager = getattr(container, "speech_output_manager", SpeechOutputManager(event_bus=container.event_bus))
+
+    def _global_domain_event_handler(event: Any):
+        try:
+            event_dict = {
+                "event_type": type(event).__name__,
+                "timestamp": getattr(event, "timestamp", time.time()),
+                "event_id": getattr(event, "event_id", ""),
+            }
+            for attr in ("raw_transcript", "intent", "intent_type", "action", "success", "execution_status", "rule_applied", "normalized_transcript", "plan_name", "plan_id", "steps", "step_index"):
+                if hasattr(event, attr):
+                    val = getattr(event, attr)
+                    if isinstance(val, (list, tuple)):
+                        event_dict[attr] = [dict(s) if hasattr(s, "_asdict") else str(s) for s in val]
+                    else:
+                        event_dict[attr] = str(val)
+
+            _recent_event_history.append(event_dict)
+            if len(_recent_event_history) > 100:
+                _recent_event_history.pop(0)
+
+            for q in list(_global_active_websockets):
+                try:
+                    q.put_nowait(event_dict)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug("Error in global domain event handler: %s", e)
+
+    if container.event_bus is not None:
+        try:
+            from backend.brain.workflow_events import WorkflowCompletedEvent, WorkflowFailedEvent, WorkflowStartedEvent, WorkflowStepCompletedEvent
+            from backend.voice.telemetry import AutomationExecutedEvent, IntentParsedEvent, TranscriptionCompletedEvent
+            for ev_cls in [IntentParsedEvent, TranscriptionCompletedEvent, AutomationExecutedEvent, WorkflowStartedEvent, WorkflowStepCompletedEvent, WorkflowCompletedEvent, WorkflowFailedEvent]:
+                container.event_bus.subscribe(ev_cls, _global_domain_event_handler)
+        except Exception as e:
+            logger.warning("Failed to subscribe global EventBus handler: %s", e)

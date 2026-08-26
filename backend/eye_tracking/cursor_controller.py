@@ -23,8 +23,8 @@ class CursorControllerConfig:
     """Configurable cursor movement behavior."""
 
     sensitivity: float = 0.92
-    smoothing_alpha: float = 0.12
-    dead_zone_px: float = 28.0
+    smoothing_alpha: float = 0.20
+    dead_zone_px: float = 15.0
     min_move_px: float = 2.5
     edge_padding_px: int = 8
     move_duration_seconds: float = 0.0
@@ -167,8 +167,13 @@ class CursorController:
         try:
             return self._move_toward_gaze(pyautogui, gaze)
         except Exception:
-            logger.exception("Eye cursor movement failed; disabling cursor controller.")
-            return self.disable()
+            logger.warning(
+                "Transient eye cursor movement failed; preserving controller enabled state.",
+                exc_info=True,
+            )
+            with self._lock:
+                self._clear_motion_state()
+            return self.get_state()
 
     def get_state(self) -> CursorControllerState:
         """Return the latest cursor controller state."""
@@ -282,10 +287,25 @@ class CursorController:
         try:
             if action_state.action == ActionType.LEFT_CLICK:
                 pyautogui.click(button="left")
+                try:
+                    from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
+                    show_click_feedback_popup(text="Left Click", duration_ms=900, x=self._last_x, y=self._last_y)
+                except Exception:
+                    pass
             elif action_state.action == ActionType.RIGHT_CLICK:
                 pyautogui.rightClick()
+                try:
+                    from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
+                    show_click_feedback_popup(text="Right Click", duration_ms=900, x=self._last_x, y=self._last_y)
+                except Exception:
+                    pass
             elif action_state.action == ActionType.DOUBLE_CLICK:
                 pyautogui.doubleClick()
+                try:
+                    from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
+                    show_click_feedback_popup(text="Double Click", duration_ms=900, x=self._last_x, y=self._last_y)
+                except Exception:
+                    pass
             elif action_state.action == ActionType.TOGGLE_DRAG:
                 self._sync_drag_button(pyautogui)
         except Exception:
@@ -416,7 +436,8 @@ class CursorController:
             logger.exception("PyAutoGUI could not be loaded; cursor control remains disabled.")
             return None
 
-        pyautogui.FAILSAFE = True
+        pyautogui.FAILSAFE = False
+        pyautogui.PAUSE = 0.0
         return pyautogui
 
     def _validate_config(self, config: CursorControllerConfig) -> None:

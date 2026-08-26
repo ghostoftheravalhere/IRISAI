@@ -33,8 +33,87 @@ export default function Dashboard() {
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [calibrationStep, setCalibrationStep] = useState(1);
+  const [calibPointIndex, setCalibPointIndex] = useState(0);
+  const [calibStatus, setCalibStatus] = useState("IDLE"); // CAMERA_STARTING, WAITING_FOR_FACE, CALIBRATING, CALIBRATION_COMPLETE, CALIBRATION_FAILED
+  const [calibResultMsg, setCalibResultMsg] = useState("");
+  const [isCapturingPoint, setIsCapturingPoint] = useState(false);
+  const [cursorControlActive, setCursorControlActive] = useState(false);
   const [ttsAvailable, setTtsAvailable] = useState(true);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+
+  // Draggable Calibration Modal State & Handlers
+  const [calibCardPos, setCalibCardPos] = useState(null); // { x, y }
+  const [isDraggingCalibCard, setIsDraggingCalibCard] = useState(false);
+  const calibDragOffsetRef = React.useRef({ x: 0, y: 0 });
+
+  const handleCalibCardMouseDown = (e) => {
+    if (e.button !== 0) return;
+    if (e.target.tagName === "BUTTON" || e.target.closest("button") || e.target.tagName === "INPUT") return;
+
+    const cardEl = e.currentTarget.closest(".calib-card");
+    if (cardEl) {
+      const rect = cardEl.getBoundingClientRect();
+      calibDragOffsetRef.current = {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+      };
+      setCalibCardPos({ x: rect.left, y: rect.top });
+      setIsDraggingCalibCard(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!isDraggingCalibCard) return;
+
+    const handleMouseMove = (e) => {
+      const newX = Math.max(10, Math.min(window.innerWidth - 380, e.clientX - calibDragOffsetRef.current.x));
+      const newY = Math.max(10, Math.min(window.innerHeight - 250, e.clientY - calibDragOffsetRef.current.y));
+      setCalibCardPos({ x: newX, y: newY });
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingCalibCard(false);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDraggingCalibCard]);
+
+  // Keyboard listener for calibration (ENTER to capture point, ESC to cancel)
+  const isCapturingRef = React.useRef(false);
+  useEffect(() => {
+    isCapturingRef.current = isCapturingPoint;
+  }, [isCapturingPoint]);
+
+  useEffect(() => {
+    if (!isCalibrating) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        handleCloseCalibration();
+        return;
+      }
+
+      if (e.key === "Enter") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (calibStatus === "CALIBRATING" && !isCapturingRef.current) {
+          handleCapturePoint();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [isCalibrating, calibStatus, calibPointIndex]);
 
   // Unified Speech Helper — Speaks aloud via both Renderer WebSpeech & Backend SAPI5
   const speakText = async (text) => {
@@ -100,6 +179,40 @@ export default function Dashboard() {
       setGoogleAuth(gAuth);
       const ghAuth = await IRISApiClient.getGitHubStatus();
       setGithubAuth(ghAuth);
+
+      // Synchronize Command Log from Event History
+      const histData = await IRISApiClient.getEventHistory();
+      if (histData && Array.isArray(histData.events) && histData.events.length > 0) {
+        setHistory((prev) => {
+          const newEntries = [];
+          for (const ev of histData.events) {
+            if (ev.event_type === "TranscriptionCompletedEvent" && ev.raw_transcript) {
+              const raw = ev.raw_transcript.trim();
+              if (raw && !newEntries.some((e) => e.transcript === raw)) {
+                newEntries.push({
+                  source: "USER",
+                  timestamp: new Date(ev.timestamp * 1000).toLocaleTimeString(),
+                  transcript: raw,
+                });
+              }
+            } else if (ev.event_type === "AutomationExecutedEvent") {
+              const resp = ev.execution_status || ev.message || "Action processed.";
+              if (resp && !newEntries.some((e) => e.response === resp)) {
+                newEntries.push({
+                  source: "IRIS",
+                  timestamp: new Date(ev.timestamp * 1000).toLocaleTimeString(),
+                  response: resp,
+                });
+              }
+            }
+          }
+          if (newEntries.length === 0) return prev;
+          // Merge unique entries
+          const existingTranscripts = new Set(prev.map((p) => p.transcript || p.response));
+          const toAdd = newEntries.filter((e) => !existingTranscripts.has(e.transcript || e.response));
+          return [...toAdd, ...prev];
+        });
+      }
     };
 
     fetchSystemData();
@@ -222,24 +335,19 @@ export default function Dashboard() {
     { index: 0, x: 0.10, y: 0.10, label: "Top-Left (1/9)" },
     { index: 1, x: 0.50, y: 0.10, label: "Top-Center (2/9)" },
     { index: 2, x: 0.90, y: 0.10, label: "Top-Right (3/9)" },
-    { index: 3, x: 0.10, y: 0.48, label: "Middle-Left (4/9)" },
-    { index: 4, x: 0.50, y: 0.48, label: "Center (5/9)" },
-    { index: 5, x: 0.90, y: 0.48, label: "Middle-Right (6/9)" },
-    { index: 6, x: 0.10, y: 0.82, label: "Bottom-Left (7/9)" },
-    { index: 7, x: 0.50, y: 0.82, label: "Bottom-Center (8/9)" },
-    { index: 8, x: 0.90, y: 0.82, label: "Bottom-Right (9/9)" },
+    { index: 3, x: 0.10, y: 0.50, label: "Middle-Left (4/9)" },
+    { index: 4, x: 0.50, y: 0.50, label: "Center (5/9)" },
+    { index: 5, x: 0.90, y: 0.50, label: "Middle-Right (6/9)" },
+    { index: 6, x: 0.10, y: 0.88, label: "Bottom-Left (7/9)" },
+    { index: 7, x: 0.50, y: 0.88, label: "Bottom-Center (8/9)" },
+    { index: 8, x: 0.90, y: 0.88, label: "Bottom-Right (9/9)" },
   ];
-
-  const [calibPointIndex, setCalibPointIndex] = useState(0);
-  const [calibStatus, setCalibStatus] = useState("IDLE"); // CAMERA_STARTING, WAITING_FOR_FACE, CALIBRATING, CALIBRATION_COMPLETE, CALIBRATION_FAILED
-  const [calibResultMsg, setCalibResultMsg] = useState("");
-  const [isCapturingPoint, setIsCapturingPoint] = useState(false);
-  const [cursorControlActive, setCursorControlActive] = useState(false);
 
   const handleStartCursorControl = async () => {
     const res = await IRISApiClient.enableCursor();
-    if (res && res.error) {
-      setCalibResultMsg(`Failed to enable cursor control: ${res.error}`);
+    if (res && (res.error || !res.enabled)) {
+      setCalibResultMsg(`Failed to enable cursor control: ${res.error || "Calibration not ready"}`);
+      setCursorControlActive(false);
     } else {
       setCursorControlActive(true);
       setCalibResultMsg("Cursor control is now ACTIVE.");
@@ -309,6 +417,7 @@ export default function Dashboard() {
     setCalibPointIndex(0);
     setCalibResultMsg("");
     setCalibStatus("CAMERA_STARTING");
+    setCalibCardPos(null);
     speakText("Starting camera capture...");
 
     // 1. Start camera capture session via backend shared CameraService
@@ -332,54 +441,73 @@ export default function Dashboard() {
     speakText("Camera ready. Position your face in front of the camera.");
 
     // 2. Wait for Face Detection confirmation
-    const snap = await IRISApiClient.getWorldSnapshot();
-    if (!snap || snap.person?.status === "unknown" && !snap.gaze_target) {
-      setCalibResultMsg("Please position your face in front of the camera.");
-    }
+    await new Promise((r) => setTimeout(r, 1200));
 
-    // 3. Reset 9-point eye calibration on backend and start
     await IRISApiClient.restartCalibration();
     setCalibStatus("CALIBRATING");
     speakText("Face detected. Look at point 1 of 9.");
   };
 
   const handleCapturePoint = async () => {
-    if (isCapturingPoint) return;
+    if (isCapturingPoint || isCapturingRef.current) return;
+    isCapturingRef.current = true;
     setIsCapturingPoint(true);
+    setCalibResultMsg(null);
 
     const pt = CALIBRATION_POINTS[calibPointIndex];
-    setLastResponseText(`Sampling calibration point ${pt.label}...`);
+    const pointNum = calibPointIndex + 1;
+    setLastResponseText(`Collecting stable eye frames for point ${pointNum}/9 (${pt.label})...`);
 
     const res = await IRISApiClient.captureCalibrationPoint();
-    setIsCapturingPoint(false);
 
     if (res && res.error) {
-      setCalibResultMsg(`Point capture failed: ${res.error}`);
+      const errMsg = res.error;
+      setCalibResultMsg(`Point ${pointNum} capture failed: ${errMsg}`);
+      setLastResponseText(`Point ${pointNum} capture failed. Keep looking at the target and press ENTER to retry.`);
+      speakText(`Point ${pointNum} not captured. Look at ${pt.label} and retry.`);
+      setIsCapturingPoint(false);
+      isCapturingRef.current = false;
       return;
     }
+
+    setLastResponseText(`Point ${pointNum} captured ✓`);
 
     if (calibPointIndex < 8) {
       const nextIdx = calibPointIndex + 1;
       setCalibPointIndex(nextIdx);
       const nextPt = CALIBRATION_POINTS[nextIdx];
-      speakText(`Point captured. Look at ${nextPt.label}.`);
+      speakText(`Point ${pointNum} captured. Look at ${nextPt.label} and press ENTER.`);
+      setIsCapturingPoint(false);
+      isCapturingRef.current = false;
     } else {
-      // Final point 9 captured! Evaluate calibration quality on backend.
-      const eyeStatus = await IRISApiClient.getEyeStatus();
-      const progress = eyeStatus?.calibration;
+      // Final point 9 captured! Evaluate calibration response directly from backend.
+      const progress = res?.complete ? res : (await IRISApiClient.getEyeStatus())?.calibration;
+      const complete = Boolean(progress?.complete);
       const quality = progress?.quality;
 
-      if (quality && quality.recommend_recalibration) {
+      setIsCapturingPoint(false);
+      isCapturingRef.current = false;
+
+      if (!complete || !quality) {
         setCalibStatus("CALIBRATION_FAILED");
-        const msg = `Quality: ${quality.label || "Poor"} (RMSE: ${quality.rmse ? quality.rmse.toFixed(3) : "0.085"}) — Recalibration recommended. Cursor control remains disabled.`;
+        const msg = "Calibration incomplete or unstable. Please restart calibration.";
+        setCalibResultMsg(msg);
+        speakText("Calibration was incomplete. Please restart calibration.");
+      } else if (quality.recommend_recalibration) {
+        setCalibStatus("CALIBRATION_FAILED");
+        const scoreLabel = quality.label ? quality.label.charAt(0).toUpperCase() + quality.label.slice(1) : "Poor";
+        const scoreVal = typeof quality.score === "number" ? quality.score.toFixed(2) : "0.00";
+        const rmseVal = typeof quality.rmse === "number" ? quality.rmse.toFixed(3) : "0.000";
+        const msg = `Quality: ${scoreLabel} (Score: ${scoreVal}, RMSE: ${rmseVal}) — Recalibration recommended. Cursor control remains disabled.`;
         setCalibResultMsg(msg);
         speakText("Calibration quality is low. Recalibration is recommended.");
       } else {
         setCalibStatus("CALIBRATION_COMPLETE");
         setCursorControlActive(false);
-        const scoreLabel = quality?.label || "Good";
-        const rmseVal = quality?.rmse ? quality.rmse.toFixed(3) : "0.040";
-        const msg = `Quality: ${scoreLabel} (RMSE: ${rmseVal}) — Gaze calibration successfully completed. Cursor Control: READY.`;
+        const scoreLabel = quality.label ? quality.label.charAt(0).toUpperCase() + quality.label.slice(1) : "Good";
+        const scoreVal = typeof quality.score === "number" ? quality.score.toFixed(2) : "1.00";
+        const rmseVal = typeof quality.rmse === "number" ? quality.rmse.toFixed(3) : "0.000";
+        const msg = `Quality: ${scoreLabel} (Score: ${scoreVal}, RMSE: ${rmseVal}) — Gaze calibration successfully completed. Cursor Control: READY.`;
         setCalibResultMsg(msg);
         speakText("Calibration complete, sir. Cursor control is ready.");
       }
@@ -557,6 +685,9 @@ export default function Dashboard() {
             <div style={{ background: "#08090e", borderRadius: "8px", padding: "1rem", fontFamily: "monospace", fontSize: "0.85rem", color: "#d1d5db", lineHeight: "1.8", marginBottom: "1.5rem" }}>
               <div>Frontend: <span style={{ color: "#34d399" }}>ONLINE</span></div>
               <div>Backend: <span style={{ color: health?.status !== "OFFLINE" ? "#34d399" : "#f87171" }}>{health?.status || "HEALTHY"}</span></div>
+              <div>Backend Version: <span style={{ color: "#60a5fa" }}>{health?.version || "2.4.3"}</span></div>
+              <div>Backend Executable: <span style={{ color: "#60a5fa" }}>{health?.executable ? health.executable.split(/[\/\\]/).pop() : "iris_backend.exe"}</span></div>
+              <div>App Resolver: <span style={{ color: "#34d399" }}>{health?.resolver || "universal_v2.4.3"}</span></div>
               <div>API Target: <span style={{ color: "#60a5fa" }}>http://127.0.0.1:8000</span></div>
               <div>WebSocket Target: <span style={{ color: "#60a5fa" }}>ws://127.0.0.1:8000/ws/events</span></div>
               <div>Microphone Input: <span style={{ color: "#34d399" }}>Ready ({micStatus})</span></div>
@@ -592,16 +723,22 @@ export default function Dashboard() {
             zIndex: 9999,
             overflow: "hidden",
             userSelect: "none",
+            pointerEvents: "auto",
           }}
         >
-          {/* Non-Obstructive Floating Controller Card during CALIBRATING */}
+          {/* Non-Obstructive Draggable Floating Controller Card during CALIBRATING */}
           {calibStatus === "CALIBRATING" && (
             <div
+              className="calib-card"
               style={{
                 position: "fixed",
-                bottom: "24px",
-                left: calibPointIndex >= 6 ? "24px" : "auto",
-                right: calibPointIndex >= 6 ? "auto" : "24px",
+                ...(calibCardPos
+                  ? { left: `${calibCardPos.x}px`, top: `${calibCardPos.y}px`, bottom: "auto", right: "auto" }
+                  : {
+                      bottom: "24px",
+                      left: calibPointIndex >= 6 ? "24px" : "auto",
+                      right: calibPointIndex >= 6 ? "auto" : "24px",
+                    }),
                 width: "360px",
                 zIndex: 10002,
                 background: "rgba(17, 24, 39, 0.95)",
@@ -611,12 +748,29 @@ export default function Dashboard() {
                 padding: "1rem 1.25rem",
                 boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(59, 130, 246, 0.3)",
                 color: "#f3f4f6",
+                pointerEvents: "auto",
+                userSelect: "none",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+              {/* Drag Header Handle */}
+              <div
+                onMouseDown={handleCalibCardMouseDown}
+                title="Click & Drag to move calibration dialog"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "0.5rem",
+                  cursor: isDraggingCalibCard ? "grabbing" : "grab",
+                  padding: "0.3rem 0.5rem",
+                  borderRadius: "6px",
+                  background: "rgba(59, 130, 246, 0.15)",
+                  border: "1px solid rgba(96, 165, 250, 0.3)",
+                }}
+              >
                 <div style={{ fontWeight: "700", fontSize: "0.95rem", color: "#60a5fa", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <span>🎯</span>
-                  <span>9-Point Eye Calibration</span>
+                  <span style={{ fontSize: "1.1rem", opacity: 0.7 }}>:::</span>
+                  <span>🎯 9-Point Eye Calibration</span>
                 </div>
                 <span style={{ fontSize: "0.8rem", background: "#1e3a8a", color: "#93c5fd", padding: "2px 8px", borderRadius: "12px", fontWeight: "600" }}>
                   Point {calibPointIndex + 1} / 9
@@ -627,31 +781,80 @@ export default function Dashboard() {
                 Target Position: <strong style={{ color: "#ffffff" }}>{CALIBRATION_POINTS[calibPointIndex].label}</strong>
               </div>
 
-              <p style={{ fontSize: "0.8rem", color: "#9ca3af", margin: "0.4rem 0 0.75rem 0", lineHeight: "1.3" }}>
-                Focus your eyes on the pulsating target dot, then click <strong>Sample Point</strong>.
+              {calibResultMsg && (
+                <div style={{
+                  background: "rgba(239, 68, 68, 0.2)",
+                  border: "1px solid #ef4444",
+                  borderRadius: "6px",
+                  padding: "0.45rem 0.65rem",
+                  fontSize: "0.78rem",
+                  color: "#fca5a5",
+                  margin: "0.4rem 0 0.6rem 0",
+                  lineHeight: "1.3",
+                  textAlign: "left",
+                }}>
+                  ⚠️ {calibResultMsg}
+                </div>
+              )}
+
+              <p style={{ fontSize: "0.85rem", color: "#9ca3af", margin: "0.4rem 0 0.75rem 0", lineHeight: "1.4" }}>
+                {isCapturingPoint ? (
+                  <span style={{ color: "#60a5fa", fontWeight: "600" }}>⚡ Collecting stable eye frames (Hold gaze still on target)...</span>
+                ) : calibResultMsg ? (
+                  <span>Hold your gaze directly at the target and press <strong style={{ color: "#38bdf8", background: "rgba(56, 189, 248, 0.15)", padding: "2px 6px", borderRadius: "4px" }}>ENTER ↵</strong> to retry</span>
+                ) : (
+                  <span>Look at the target and press <strong style={{ color: "#38bdf8", background: "rgba(56, 189, 248, 0.15)", padding: "2px 6px", borderRadius: "4px" }}>ENTER ↵</strong></span>
+                )}
               </p>
 
-              <div style={{ display: "flex", gap: "0.5rem" }}>
+              <div style={{ display: "flex", gap: "0.5rem", pointerEvents: "auto" }}>
                 <button
-                  onClick={handleCapturePoint}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCapturePoint();
+                  }}
                   disabled={isCapturingPoint}
                   style={{
                     flex: 1,
                     padding: "0.55rem 1rem",
                     borderRadius: "6px",
-                    background: "#2563eb",
+                    background: isCapturingPoint ? "#1d4ed8" : calibResultMsg ? "#d97706" : "#2563eb",
                     border: "none",
                     color: "#ffffff",
                     fontWeight: "600",
                     fontSize: "0.85rem",
                     cursor: isCapturingPoint ? "not-allowed" : "pointer",
+                    pointerEvents: "auto",
                   }}
                 >
-                  {isCapturingPoint ? "Sampling..." : `Sample Point ${calibPointIndex + 1}/9 →`}
+                  {isCapturingPoint ? "Collecting frames..." : calibResultMsg ? `🔄 Retry Point ${calibPointIndex + 1}/9 (ENTER ↵)` : `Press ENTER ↵ (Sample Point ${calibPointIndex + 1}/9)`}
                 </button>
 
                 <button
-                  onClick={handleCloseCalibration}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleStartCalibration();
+                  }}
+                  title="Restart calibration from Point 1"
+                  style={{
+                    padding: "0.55rem 0.75rem",
+                    borderRadius: "6px",
+                    background: "transparent",
+                    border: "1px solid #4b5563",
+                    color: "#9ca3af",
+                    fontSize: "0.8rem",
+                    cursor: "pointer",
+                    pointerEvents: "auto",
+                  }}
+                >
+                  Restart
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCloseCalibration();
+                  }}
                   style={{
                     padding: "0.55rem 0.85rem",
                     borderRadius: "6px",
@@ -660,22 +863,29 @@ export default function Dashboard() {
                     color: "#9ca3af",
                     fontSize: "0.85rem",
                     cursor: "pointer",
+                    pointerEvents: "auto",
                   }}
                 >
-                  Cancel
+                  Cancel (ESC)
                 </button>
+              </div>
+
+              <div style={{ marginTop: "0.55rem", fontSize: "0.75rem", color: "#6b7280", display: "flex", justifyContent: "space-between", borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: "0.4rem" }}>
+                <span>⌨️ Press <strong style={{ color: "#9ca3af" }}>ENTER</strong> to capture/retry</span>
+                <span>Press <strong style={{ color: "#9ca3af" }}>ESC</strong> to cancel</span>
               </div>
             </div>
           )}
 
-          {/* Centered Modal Card for Camera Setup, Complete, or Failed */}
+          {/* Centered Draggable Modal Card for Camera Setup, Complete, or Failed */}
           {calibStatus !== "CALIBRATING" && (
             <div
+              className="calib-card"
               style={{
                 position: "fixed",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
+                ...(calibCardPos
+                  ? { left: `${calibCardPos.x}px`, top: `${calibCardPos.y}px`, transform: "none" }
+                  : { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }),
                 zIndex: 10002,
                 background: "#12131c",
                 border: calibStatus === "CALIBRATION_COMPLETE" ? "1px solid #10b981" : "1px solid #3b82f6",
@@ -685,11 +895,31 @@ export default function Dashboard() {
                 width: "90%",
                 textAlign: "center",
                 boxShadow: "0 20px 40px rgba(0,0,0,0.8)",
+                pointerEvents: "auto",
+                userSelect: "none",
               }}
             >
-              <h4 style={{ color: calibStatus === "CALIBRATION_COMPLETE" ? "#34d399" : "#60a5fa", margin: 0, fontSize: "1.25rem", fontWeight: "700" }}>
-                {calibStatus === "CALIBRATION_COMPLETE" ? "✓ Calibration Complete" : "🎯 9-Point Eye Gaze Calibration"}
-              </h4>
+              {/* Drag Header Handle */}
+              <div
+                onMouseDown={handleCalibCardMouseDown}
+                title="Click & Drag to move modal"
+                style={{
+                  cursor: isDraggingCalibCard ? "grabbing" : "grab",
+                  padding: "0.3rem",
+                  marginBottom: "0.5rem",
+                  borderRadius: "8px",
+                  background: "rgba(255,255,255,0.05)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.5rem",
+                }}
+              >
+                <span style={{ fontSize: "1.1rem", opacity: 0.5 }}>:::</span>
+                <h4 style={{ color: calibStatus === "CALIBRATION_COMPLETE" ? "#34d399" : "#60a5fa", margin: 0, fontSize: "1.25rem", fontWeight: "700" }}>
+                  {calibStatus === "CALIBRATION_COMPLETE" ? "✓ Calibration Complete" : "🎯 9-Point Eye Gaze Calibration"}
+                </h4>
+              </div>
 
               <div style={{ fontSize: "0.85rem", color: "#9ca3af", margin: "0.5rem 0 1rem 0", display: "flex", justifyContent: "center", gap: "1.25rem" }}>
                 <span>Camera: <strong style={{ color: calibStatus !== "CALIBRATION_FAILED" ? "#34d399" : "#f87171" }}>{calibStatus === "CAMERA_STARTING" ? "Starting..." : calibStatus === "CALIBRATION_FAILED" ? "Unavailable" : "Ready"}</strong></span>
@@ -726,11 +956,11 @@ export default function Dashboard() {
                 </div>
               )}
 
-              <div style={{ display: "flex", justifyContent: "center", gap: "0.75rem", marginTop: "0.5rem" }}>
+              <div style={{ display: "flex", justifyContent: "center", gap: "0.75rem", marginTop: "0.5rem", pointerEvents: "auto" }}>
                 {calibStatus === "CALIBRATION_COMPLETE" && (
                   <>
                     <button
-                      onClick={cursorControlActive ? handleStopCursorControl : handleStartCursorControl}
+                      onClick={(e) => { e.stopPropagation(); cursorControlActive ? handleStopCursorControl() : handleStartCursorControl(); }}
                       style={{
                         padding: "0.6rem 1.4rem",
                         borderRadius: "8px",
@@ -740,12 +970,13 @@ export default function Dashboard() {
                         fontWeight: "600",
                         fontSize: "0.9rem",
                         cursor: "pointer",
+                        pointerEvents: "auto",
                       }}
                     >
                       {cursorControlActive ? "⏹ Stop Cursor Control" : "▶ Start Cursor Control"}
                     </button>
                     <button
-                      onClick={handleStartCalibration}
+                      onClick={(e) => { e.stopPropagation(); handleStartCalibration(); }}
                       style={{
                         padding: "0.6rem 1.2rem",
                         borderRadius: "8px",
@@ -755,6 +986,7 @@ export default function Dashboard() {
                         fontWeight: "600",
                         fontSize: "0.9rem",
                         cursor: "pointer",
+                        pointerEvents: "auto",
                       }}
                     >
                       🔄 Recalibrate
@@ -764,7 +996,7 @@ export default function Dashboard() {
 
                 {calibStatus === "CALIBRATION_FAILED" && (
                   <button
-                    onClick={handleStartCalibration}
+                    onClick={(e) => { e.stopPropagation(); handleStartCalibration(); }}
                     style={{
                       padding: "0.6rem 1.4rem",
                       borderRadius: "8px",
@@ -774,6 +1006,7 @@ export default function Dashboard() {
                       fontWeight: "600",
                       fontSize: "0.9rem",
                       cursor: "pointer",
+                      pointerEvents: "auto",
                     }}
                   >
                     🔄 Retry Calibration
@@ -781,7 +1014,7 @@ export default function Dashboard() {
                 )}
 
                 <button
-                  onClick={handleCloseCalibration}
+                  onClick={(e) => { e.stopPropagation(); handleCloseCalibration(); }}
                   style={{
                     padding: "0.6rem 1.25rem",
                     borderRadius: "8px",
@@ -790,6 +1023,7 @@ export default function Dashboard() {
                     color: "#9ca3af",
                     fontSize: "0.9rem",
                     cursor: "pointer",
+                    pointerEvents: "auto",
                   }}
                 >
                   {calibStatus === "CALIBRATION_COMPLETE" ? "Done" : "Cancel"}

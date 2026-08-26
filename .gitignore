@@ -12,6 +12,7 @@ build/
 develop-eggs/
 dist/
 frontend/release/
+frontend/release_out/
 downloads/
 eggs/
 .eggs/
@@ -29,7 +30,8 @@ MANIFEST
 
 # PyInstaller
 *.manifest
-!backend/iris_backend.spec
+!iris_backend.spec
+.codex-runtime/
 
 # Offline Model Binaries
 resources/models/*/*.bin
@@ -57,12 +59,11 @@ cover/
 # Translations
 *.mo
 *.pot
+# SQLite runtime database
+database/*.db
+database/*.sqlite
+database/*.sqlite3
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
 
 # Flask stuff:
 instance/
@@ -230,6 +231,33 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# React / Electron
+dist/
+out/
+build/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+
+# Electron Builder
+release/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # Temporary Audio & Architecture Exports
 *.wav

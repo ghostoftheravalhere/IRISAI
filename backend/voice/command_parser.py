@@ -26,7 +26,9 @@ class VoiceIntentType(str, Enum):
     WAIT_FOR_WINDOW = "WAIT_FOR_WINDOW"
     ACTIVATE_WINDOW = "ACTIVATE_WINDOW"
     VERIFY_WINDOW_ACTIVE = "VERIFY_WINDOW_ACTIVE"
-    # Mouse & Selection Intents
+    # Mouse & Cursor Intents
+    START_CURSOR_CONTROL = "START_CURSOR_CONTROL"
+    STOP_CURSOR_CONTROL = "STOP_CURSOR_CONTROL"
     PRIMARY_CLICK = "PRIMARY_CLICK"
     RIGHT_CLICK = "RIGHT_CLICK"
     DOUBLE_CLICK = "DOUBLE_CLICK"
@@ -71,17 +73,19 @@ class IntentParserService:
     matching ``Open Chrome``.
     """
 
-    _FUZZY_MIN_RATIO = 0.82
-    _TARGET_FUZZY_MIN_RATIO = 0.75
+    _FUZZY_MIN_RATIO = 0.85
+    _TARGET_FUZZY_MIN_RATIO = 0.85
 
-    _OPEN_VERBS = ("open", "launch", "start", "opened", "run", "go to", "take me to", "navigate to", "switch to")
-    _CLOSE_VERBS = ("close", "quit", "exit", "kill", "closed")
+    _OPEN_VERBS = ("open", "launch", "start", "enable", "activate", "opened", "run", "go to", "take me to", "navigate to", "switch to")
+    _CLOSE_VERBS = ("close", "quit", "exit", "kill", "stop", "disable", "deactivate", "closed")
     _MINIMIZE_VERBS = ("minimize", "minimise")
 
     _APP_TARGETS: dict[str, tuple[str, ...]] = {
         "word": ("microsoft word", "ms word", "word", "winword"),
         "excel": ("microsoft excel", "ms excel", "excel"),
         "powerpoint": ("microsoft powerpoint", "ms powerpoint", "powerpoint", "ppt"),
+        "teams": ("microsoft teams", "ms teams", "teams", "msteams", "teams meeting"),
+        "zoom": ("zoom workplace", "zoom", "zoom meeting", "zoom app"),
         "chrome": ("chrome", "google chrome", "chrom", "crow", "browser"),
         "notepad": ("notepad", "note pad", "editor"),
         "edge": ("edge", "microsoft edge", "ms edge", "msedge"),
@@ -96,6 +100,46 @@ class IntentParserService:
     }
 
     _PHRASE_COMMANDS: dict[VoiceIntentType, tuple[str, ...]] = {
+        VoiceIntentType.START_CURSOR_CONTROL: (
+            "start cursor control",
+            "enable cursor control",
+            "turn on cursor control",
+            "activate cursor control",
+            "start eye control",
+            "enable eye control",
+            "turn on eye control",
+            "activate eye control",
+            "start gaze control",
+            "enable gaze control",
+            "turn on gaze control",
+            "activate gaze control",
+            "start cursor",
+            "enable cursor",
+            "turn on cursor",
+            "activate cursor",
+            "start eye tracking cursor",
+            "enable eye tracking cursor",
+        ),
+        VoiceIntentType.STOP_CURSOR_CONTROL: (
+            "stop cursor control",
+            "disable cursor control",
+            "turn off cursor control",
+            "deactivate cursor control",
+            "stop eye control",
+            "disable eye control",
+            "turn off eye control",
+            "deactivate eye control",
+            "stop gaze control",
+            "disable gaze control",
+            "turn off gaze control",
+            "deactivate gaze control",
+            "stop cursor",
+            "disable cursor",
+            "turn off cursor",
+            "deactivate cursor",
+            "stop eye tracking cursor",
+            "disable eye tracking cursor",
+        ),
         VoiceIntentType.PRIMARY_CLICK: ("click", "left click", "click here", "primary click", "click this", "click it"),
         VoiceIntentType.RIGHT_CLICK: ("right click", "right-click", "do a right click", "rightclick", "context menu", "right click here", "right click it", "right click this"),
         VoiceIntentType.DOUBLE_CLICK: ("double click", "double-click", "doubleclick", "do a double click"),
@@ -252,6 +296,21 @@ class IntentParserService:
         cleaned_rem = self._clean_target_phrase(remainder) if remainder else ""
         target = self._resolve_target(cleaned_rem) if cleaned_rem else None
 
+        remainder_lower = remainder.lower()
+        if any(term in remainder_lower for term in ("cursor control", "eye control", "gaze control", "cursor")):
+            if verb in self._OPEN_VERBS:
+                return VoiceIntent(
+                    intent=VoiceIntentType.START_CURSOR_CONTROL,
+                    text=original,
+                    confidence=1.0,
+                )
+            if verb in self._CLOSE_VERBS:
+                return VoiceIntent(
+                    intent=VoiceIntentType.STOP_CURSOR_CONTROL,
+                    text=original,
+                    confidence=1.0,
+                )
+
         if verb == "open":
             is_chat = any(w in remainder.lower() for w in ("chat", "conversation"))
             intent_type = VoiceIntentType.OPEN_CHAT if is_chat else VoiceIntentType.OPEN_APPLICATION
@@ -310,14 +369,28 @@ class IntentParserService:
         return None
 
     def _resolve_target(self, remainder: str) -> str | None:
-        """Resolve an application/window target from the words after the verb."""
+        """Resolve an application/window target from the words after the verb using DesktopAppResolver."""
         if not remainder:
             return None
 
+        # 1. Check static app targets registry
         for target, synonyms in self._APP_TARGETS.items():
             if remainder in synonyms or any(self._contains_phrase(remainder, syn) for syn in synonyms):
                 return target
 
+        # 2. Consult dynamic DesktopAppResolver for installed Windows apps
+        try:
+            from backend.automation.app_resolver import app_resolver
+            app_key = app_resolver.resolve_app_key(remainder)
+            if app_key:
+                return app_key
+            target_obj = app_resolver.resolve_app_target(remainder)
+            if target_obj and target_obj.found:
+                return target_obj.app_key or remainder
+        except Exception:
+            pass
+
+        # 3. High-confidence fuzzy fallback matching only (ratio >= 0.85)
         best_target: str | None = None
         best_ratio = 0.0
         for target, synonyms in self._APP_TARGETS.items():

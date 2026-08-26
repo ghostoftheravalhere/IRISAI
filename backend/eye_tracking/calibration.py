@@ -120,15 +120,15 @@ class EyeCalibrationService:
 
     points: tuple[CalibrationPoint, ...] = field(
         default_factory=lambda: (
-            CalibrationPoint(index=0, x=0.1, y=0.1),
-            CalibrationPoint(index=1, x=0.5, y=0.1),
-            CalibrationPoint(index=2, x=0.9, y=0.1),
-            CalibrationPoint(index=3, x=0.1, y=0.5),
-            CalibrationPoint(index=4, x=0.5, y=0.5),
-            CalibrationPoint(index=5, x=0.9, y=0.5),
-            CalibrationPoint(index=6, x=0.1, y=0.9),
-            CalibrationPoint(index=7, x=0.5, y=0.9),
-            CalibrationPoint(index=8, x=0.9, y=0.9),
+            CalibrationPoint(index=0, x=0.10, y=0.10),
+            CalibrationPoint(index=1, x=0.50, y=0.10),
+            CalibrationPoint(index=2, x=0.90, y=0.10),
+            CalibrationPoint(index=3, x=0.10, y=0.50),
+            CalibrationPoint(index=4, x=0.50, y=0.50),
+            CalibrationPoint(index=5, x=0.90, y=0.50),
+            CalibrationPoint(index=6, x=0.10, y=0.88),
+            CalibrationPoint(index=7, x=0.50, y=0.88),
+            CalibrationPoint(index=8, x=0.90, y=0.88),
         )
     )
     eye_config: EyeInteractionConfig | None = None
@@ -265,26 +265,41 @@ class EyeCalibrationService:
     ) -> tuple[EyeData, EyeCenter, int]:
         """Validate, reject outliers, and average consecutive gaze samples."""
         assert self.eye_config is not None
+        progress = self.get_progress()
+        current_pt = progress.current_point
+        pt_idx = current_pt.index if current_pt else -1
+        pt_x = current_pt.x if current_pt else 0.0
+        pt_y = current_pt.y if current_pt else 0.0
+
         if not eye_samples:
-            raise CalibrationCaptureError("No gaze samples were provided.")
+            msg = "No eye landmark samples were collected from the camera stream."
+            logger.warning(
+                "[CALIBRATION DIAGNOSTIC] Point %d/9 Target: (%.2f, %.2f) FAILED: %s",
+                pt_idx + 1, pt_x, pt_y, msg
+            )
+            raise CalibrationCaptureError(msg)
 
         valid_frames: list[EyeData] = []
         centers: list[EyeCenter] = []
         previous_center: EyeCenter | None = None
+        invalid_landmark_or_blink_count = 0
+        jump_rejected_count = 0
 
         for eye_data in eye_samples:
             if not self._is_valid_calibration_frame(eye_data):
+                invalid_landmark_or_blink_count += 1
                 continue
 
             try:
                 center = self._compute_eye_center(eye_data)
             except ValueError:
+                invalid_landmark_or_blink_count += 1
                 continue
 
             if previous_center is not None:
                 jump = hypot(center.x - previous_center.x, center.y - previous_center.y)
                 if jump > self.eye_config.calibration_max_center_jump:
-                    # Sudden head movement / tracking glitch — drop this frame.
+                    jump_rejected_count += 1
                     continue
 
             valid_frames.append(eye_data)
@@ -292,17 +307,31 @@ class EyeCalibrationService:
             previous_center = center
 
         if len(valid_frames) < self.eye_config.calibration_min_valid_samples:
-            raise CalibrationCaptureError(
-                f"Only {len(valid_frames)} stable samples available; "
+            exc_msg = (
+                f"Only {len(valid_frames)} stable samples available (processed {len(eye_samples)} frames, "
+                f"{invalid_landmark_or_blink_count} blinks/lost, {jump_rejected_count} jumps); "
                 f"need at least {self.eye_config.calibration_min_valid_samples}."
             )
+            logger.warning(
+                "[CALIBRATION DIAGNOSTIC] Point %d/9 Target: (%.2f, %.2f) FAILED: %s",
+                pt_idx + 1, pt_x, pt_y, exc_msg
+            )
+            raise CalibrationCaptureError(exc_msg)
 
         kept_indices = self._select_inlier_indices(centers)
+        outlier_rejected_count = len(valid_frames) - len(kept_indices)
+
         if len(kept_indices) < self.eye_config.calibration_min_valid_samples:
-            raise CalibrationCaptureError(
-                f"Only {len(kept_indices)} inlier samples remained after outlier rejection; "
+            exc_msg = (
+                f"Only {len(kept_indices)} inlier samples remained after outlier rejection "
+                f"({outlier_rejected_count} outliers rejected from {len(valid_frames)} frames); "
                 f"need at least {self.eye_config.calibration_min_valid_samples}."
             )
+            logger.warning(
+                "[CALIBRATION DIAGNOSTIC] Point %d/9 Target: (%.2f, %.2f) FAILED: %s",
+                pt_idx + 1, pt_x, pt_y, exc_msg
+            )
+            raise CalibrationCaptureError(exc_msg)
 
         kept_frames = [valid_frames[index] for index in kept_indices]
         kept_centers = [centers[index] for index in kept_indices]
@@ -313,14 +342,23 @@ class EyeCalibrationService:
             / len(kept_centers)
         )
         if dispersion > self.eye_config.calibration_max_sample_dispersion:
-            raise CalibrationCaptureError(
-                f"Gaze dispersion {dispersion:.4f} exceeds "
-                f"{self.eye_config.calibration_max_sample_dispersion:.4f}; "
-                "hold still and look at the target."
+            exc_msg = (
+                f"Gaze dispersion {dispersion:.4f} exceeds {self.eye_config.calibration_max_sample_dispersion:.4f}; "
+                "hold still and look directly at the target."
             )
+            logger.warning(
+                "[CALIBRATION DIAGNOSTIC] Point %d/9 Target: (%.2f, %.2f) FAILED: %s",
+                pt_idx + 1, pt_x, pt_y, exc_msg
+            )
+            raise CalibrationCaptureError(exc_msg)
 
         averaged_eye_data = self._average_eye_data(kept_frames)
         eye_center = EyeCenter(x=mean_x, y=mean_y)
+        logger.info(
+            "[CALIBRATION DIAGNOSTIC] Point %d/9 Target: (%.2f, %.2f) CAPTURED SUCCESSFULLY "
+            "(frames=%d, valid=%d, inliers=%d, dispersion=%.4f, center=(%.4f, %.4f))",
+            pt_idx + 1, pt_x, pt_y, len(eye_samples), len(valid_frames), len(kept_indices), dispersion, mean_x, mean_y
+        )
         return averaged_eye_data, eye_center, len(kept_centers)
 
     def _is_valid_calibration_frame(self, eye_data: EyeData) -> bool:
@@ -348,9 +386,12 @@ class EyeCalibrationService:
         except ValueError:
             return False
 
-        # Require both eyes open so blink frames never enter the average.
-        open_threshold = self.eye_config.ear_open_threshold
-        return left_ear >= open_threshold and right_ear >= open_threshold
+        # Require both eyes open (not closed in a blink) so blink frames never enter the average.
+        # During downgaze (e.g. Points 7, 8, 9), eyelids naturally lower slightly (EAR ~0.22-0.25).
+        # We check ear >= ear_close_threshold so closed-eye blinks (< 0.21) are rejected while
+        # open downgaze eye frames are accepted.
+        min_ear = self.eye_config.ear_close_threshold
+        return left_ear >= min_ear and right_ear >= min_ear
 
     def _select_inlier_indices(self, centers: Sequence[EyeCenter]) -> list[int]:
         """Keep samples within a robust MAD envelope around the median center."""
