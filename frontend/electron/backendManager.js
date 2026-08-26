@@ -57,50 +57,68 @@ class BackendManager {
   /**
    * Resolve backend executable path dynamically for dev vs production packaged mode.
    */
-  getBackendExecutable() {
+  /**
+   * Robust scanner for iris_backend.exe across all extraction/installation layouts.
+   */
+  getBackendPath() {
     const isWin = process.platform === "win32";
     const execName = isWin ? "iris_backend.exe" : "iris_backend";
 
-    if (this.isPackaged()) {
-      // Check iris_backend/ first (per extraResources: to "iris_backend")
-      const irisBackendPath = path.join(process.resourcesPath, "iris_backend", execName);
-      if (fs.existsSync(irisBackendPath)) {
-        return irisBackendPath;
+    // Array of every possible extraction path for NSIS and Portable Electron builds
+    const possiblePaths = [
+      path.join(process.resourcesPath, "iris_backend", execName),
+      path.join(process.resourcesPath, "backend", execName),
+      path.join(app && app.getAppPath ? app.getAppPath() : "", "..", "iris_backend", execName),
+      path.join(app && app.getAppPath ? app.getAppPath() : "", "..", "backend", execName),
+      path.join(path.dirname(app && app.getPath ? app.getPath("exe") : process.execPath), "resources", "iris_backend", execName),
+      path.join(path.dirname(app && app.getPath ? app.getPath("exe") : process.execPath), "resources", "backend", execName),
+      path.join(app && app.getPath ? app.getPath("userData") : "", "backend", execName),
+      path.join(__dirname, "../../dist/iris_backend", execName),
+      path.resolve(__dirname, "../../dist/iris_backend", execName),
+    ];
+
+    for (const p of possiblePaths) {
+      if (p && fs.existsSync(p)) {
+        console.log("[ELECTRON] Backend found at:", p);
+        return p;
       }
-      // Fallback to backend/
-      const backendPath = path.join(process.resourcesPath, "backend", execName);
-      if (fs.existsSync(backendPath)) {
-        return backendPath;
-      }
-      return irisBackendPath;
     }
 
-    // Development mode: check compiled dist first, then virtual environment python
-    const distPath = path.resolve(__dirname, "../../dist/iris_backend", execName);
-    if (fs.existsSync(distPath)) {
-      return distPath;
+    console.error("[ELECTRON] CRITICAL: iris_backend.exe could not be found in any standard directory.");
+    return null;
+  }
+
+  /**
+   * Resolve backend executable path (packaged binary or dev python interpreter).
+   */
+  getBackendExecutable() {
+    const binaryPath = this.getBackendPath();
+    if (binaryPath) {
+      return binaryPath;
     }
 
+    // Development mode fallback: virtual environment python
+    const isWin = process.platform === "win32";
     const venvPython = isWin
       ? path.resolve(__dirname, "../../backend/.venv/Scripts/python.exe")
       : path.resolve(__dirname, "../../backend/.venv/bin/python");
 
-    return venvPython;
+    if (fs.existsSync(venvPython)) {
+      console.log("[ELECTRON] Dev Python interpreter found at:", venvPython);
+      return venvPython;
+    }
+
+    return isWin ? "python.exe" : "python3";
   }
 
   /**
    * Resolve backend working directory.
    */
   getBackendDir() {
-    if (this.isPackaged()) {
-      const irisBackendDir = path.join(process.resourcesPath, "iris_backend");
-      if (fs.existsSync(irisBackendDir)) return irisBackendDir;
-      const backendDir = path.join(process.resourcesPath, "backend");
-      if (fs.existsSync(backendDir)) return backendDir;
-      return irisBackendDir;
+    const execPath = this.getBackendExecutable();
+    if (execPath && execPath.endsWith(".exe") && !execPath.toLowerCase().includes("python")) {
+      return path.dirname(execPath);
     }
-    const distDir = path.resolve(__dirname, "../../dist/iris_backend");
-    if (fs.existsSync(distDir)) return distDir;
     return path.resolve(__dirname, "../../backend");
   }
 
