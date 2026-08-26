@@ -157,8 +157,16 @@ app.on("before-quit", async (event) => {
   }
 });
 
-app.on("window-all-closed", () => {
+app.on("window-all-closed", async () => {
   if (process.platform !== "darwin") {
+    if (backendManager.ownedByElectron && backendManager.childProcess && !isQuitting) {
+      isQuitting = true;
+      try {
+        await backendManager.stop();
+      } catch (err) {
+        console.error("[ELECTRON] Error stopping backend on window-all-closed:", err);
+      }
+    }
     app.quit();
   }
 });

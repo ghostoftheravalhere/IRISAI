@@ -24,6 +24,11 @@ _APP_PROCESS_MAP: dict[str, dict[str, str]] = {
         "darwin": "Google Chrome",
         "linux": "chrome",
     },
+    "google chrome": {
+        "win": "chrome.exe",
+        "darwin": "Google Chrome",
+        "linux": "chrome",
+    },
     "notepad": {
         "win": "notepad.exe",
         "darwin": "TextEdit",
@@ -33,6 +38,116 @@ _APP_PROCESS_MAP: dict[str, dict[str, str]] = {
         "win": "msedge.exe",
         "darwin": "Microsoft Edge",
         "linux": "microsoft-edge",
+    },
+    "microsoft edge": {
+        "win": "msedge.exe",
+        "darwin": "Microsoft Edge",
+        "linux": "microsoft-edge",
+    },
+    "microsoft word": {
+        "win": "winword.exe",
+        "darwin": "Microsoft Word",
+        "linux": "word",
+    },
+    "word": {
+        "win": "winword.exe",
+        "darwin": "Microsoft Word",
+        "linux": "word",
+    },
+    "winword": {
+        "win": "winword.exe",
+        "darwin": "Microsoft Word",
+        "linux": "word",
+    },
+    "microsoft powerpoint": {
+        "win": "powerpnt.exe",
+        "darwin": "Microsoft PowerPoint",
+        "linux": "powerpoint",
+    },
+    "power point": {
+        "win": "powerpnt.exe",
+        "darwin": "Microsoft PowerPoint",
+        "linux": "powerpoint",
+    },
+    "powerpoint": {
+        "win": "powerpnt.exe",
+        "darwin": "Microsoft PowerPoint",
+        "linux": "powerpoint",
+    },
+    "ppt": {
+        "win": "powerpnt.exe",
+        "darwin": "Microsoft PowerPoint",
+        "linux": "powerpoint",
+    },
+    "microsoft excel": {
+        "win": "excel.exe",
+        "darwin": "Microsoft Excel",
+        "linux": "excel",
+    },
+    "excel": {
+        "win": "excel.exe",
+        "darwin": "Microsoft Excel",
+        "linux": "excel",
+    },
+    "file explorer": {
+        "win": "explorer.exe",
+        "darwin": "Finder",
+        "linux": "nautilus",
+    },
+    "explorer": {
+        "win": "explorer.exe",
+        "darwin": "Finder",
+        "linux": "nautilus",
+    },
+    "files": {
+        "win": "explorer.exe",
+        "darwin": "Finder",
+        "linux": "nautilus",
+    },
+    "this pc": {
+        "win": "explorer.exe",
+        "darwin": "Finder",
+        "linux": "nautilus",
+    },
+    "my computer": {
+        "win": "explorer.exe",
+        "darwin": "Finder",
+        "linux": "nautilus",
+    },
+    "windows explorer": {
+        "win": "explorer.exe",
+        "darwin": "Finder",
+        "linux": "nautilus",
+    },
+    "calculator": {
+        "win": "calc.exe",
+        "darwin": "Calculator",
+        "linux": "gnome-calculator",
+    },
+    "calc": {
+        "win": "calc.exe",
+        "darwin": "Calculator",
+        "linux": "gnome-calculator",
+    },
+    "teams": {
+        "win": "ms-teams.exe",
+        "darwin": "Microsoft Teams",
+        "linux": "teams",
+    },
+    "microsoft teams": {
+        "win": "ms-teams.exe",
+        "darwin": "Microsoft Teams",
+        "linux": "teams",
+    },
+    "spotify": {
+        "win": "Spotify.exe",
+        "darwin": "Spotify",
+        "linux": "spotify",
+    },
+    "discord": {
+        "win": "Discord.exe",
+        "darwin": "Discord",
+        "linux": "discord",
     },
     "settings": {
         "win": "SystemSettings.exe",
@@ -194,126 +309,153 @@ class DesktopController:
         """Close the currently focused window (Alt+F4)."""
         return self.hotkey("alt", "f4")
 
+    def is_application_running(self, application_name: str) -> bool:
+        """Return True when the application or process is currently running."""
+        app = (application_name or "").strip()
+        if not app:
+            return False
+
+        # File Explorer check (active folder windows rather than shell process)
+        is_explorer = app.lower() in ("explorer", "file explorer", "files", "this pc", "my computer", "windows explorer")
+        if is_explorer and sys.platform.startswith("win"):
+            from backend.automation.app_resolver import app_resolver
+            resolved = app_resolver.resolve_running_app(app)
+            return bool(resolved.matched and (resolved.pids or resolved.window_handles))
+
+        # Fast path via centralized process map (excluding explorer.exe which is permanent desktop shell)
+        process_name = self._resolve_process_name(app)
+        if process_name and process_name.lower() != "explorer.exe" and self._is_process_running(process_name):
+            return True
+
+        from backend.automation.app_resolver import app_resolver
+        resolved = app_resolver.resolve_running_app(app)
+        return bool(resolved.matched and (resolved.pids or resolved.window_handles))
+
     def close_application(self, application_name: str) -> ApplicationCloseResult:
         """Close a named application with graceful close, then forced fallback.
 
         Windows flow:
-        1. Locate the process and its top-level windows
-        2. Post WM_CLOSE to each main window
-        3. Wait up to 2 seconds for exit
-        4. If still running, ``taskkill /F`` as fallback
-
-        Does not use Alt+F4 — only the requested process is targeted.
+        1. Resolve target application PIDs and executable metadata dynamically via app_resolver
+        2. For File Explorer, close folder windows via WM_CLOSE without terminating explorer.exe
+        3. For standard apps, post WM_CLOSE to main windows of target PIDs
+        4. Wait up to 2 seconds for exit; force-terminate only target PIDs if not exited
         """
-        process_name = self._resolve_process_name(application_name)
-        if process_name is None:
-            logger.warning("Unsupported close application target: %s", application_name)
+        app = (application_name or "").strip()
+        if not app:
             return ApplicationCloseResult(False, "unsupported")
 
+        from backend.automation.app_resolver import app_resolver
+        resolved_running = app_resolver.resolve_running_app(app)
+        resolved_installed = app_resolver.resolve_app_target(app)
+        canonical_name = resolved_running.name or (resolved_installed.canonical_name if resolved_installed and resolved_installed.found else app.title())
+
+        process_name = self._resolve_process_name(app)
+
+        # Special safety path for File Explorer (CabinetWClass)
+        is_explorer = (
+            app.lower() in ("explorer", "file explorer", "files", "this pc", "my computer", "windows explorer")
+            or (process_name and process_name.lower() == "explorer.exe")
+            or canonical_name.lower() in ("file explorer", "windows explorer")
+        )
+        if is_explorer and sys.platform.startswith("win"):
+            closed = self._close_explorer_windows()
+            if closed:
+                logger.info("Voice automation closed File Explorer window(s)")
+                return ApplicationCloseResult(True, "closed", "File Explorer")
+            else:
+                logger.info("No open File Explorer windows found to close")
+                return ApplicationCloseResult(False, "not_running", "File Explorer")
+
+        pids = list(resolved_running.pids)
+        if not pids and process_name:
+            pids = self._list_windows_pids(process_name)
+
+        if not pids and not self.is_application_running(app):
+            logger.info("Close skipped; application not running target=%s", app)
+            return ApplicationCloseResult(False, "not_running", canonical_name)
+
+        logger.info(
+            "Targeting application '%s' for closure: pids=%s procs=%s source=%s",
+            canonical_name,
+            pids,
+            resolved_running.process_names,
+            resolved_running.source,
+        )
+
         try:
-            if not self.is_application_running(application_name):
-                logger.info(
-                    "Close skipped; application not running target=%s process=%s",
-                    application_name,
-                    process_name,
-                )
-                return ApplicationCloseResult(False, "not_running", process_name)
-
             if sys.platform.startswith("win"):
-                closed = self._close_application_windows(process_name)
-                if closed and self._wait_until_exited(process_name, _GRACEFUL_CLOSE_TIMEOUT_SECONDS):
-                    logger.info(
-                        "Voice automation gracefully closed application target=%s process=%s",
-                        application_name,
-                        process_name,
-                    )
-                    return ApplicationCloseResult(True, "closed", process_name)
+                # 1. Post WM_CLOSE to main windows of target PIDs
+                if pids:
+                    self._close_windows_by_pids(pids)
+                elif process_name:
+                    self._close_application_windows(process_name)
 
-                if self._force_kill_windows(process_name):
-                    logger.info(
-                        "Voice automation force-closed application target=%s process=%s",
-                        application_name,
-                        process_name,
-                    )
-                    return ApplicationCloseResult(True, "closed", process_name)
+                # Wait for target PIDs or process_name to exit
+                if pids and self._wait_until_pids_exited(pids, _GRACEFUL_CLOSE_TIMEOUT_SECONDS):
+                    # Clean up any lingering background child processes if needed
+                    if process_name and self._is_process_running(process_name):
+                        self._force_kill_windows(process_name)
+                    logger.info("Voice automation gracefully closed application '%s' (pids=%s)", canonical_name, pids)
+                    return ApplicationCloseResult(True, "closed", canonical_name)
+                elif process_name and self._wait_until_exited(process_name, _GRACEFUL_CLOSE_TIMEOUT_SECONDS):
+                    logger.info("Voice automation gracefully closed application '%s'", canonical_name)
+                    return ApplicationCloseResult(True, "closed", canonical_name)
 
-                logger.warning(
-                    "Failed to close application %s (%s)",
-                    application_name,
-                    process_name,
-                )
-                return ApplicationCloseResult(False, "failed", process_name)
+                # 2. Force termination fallback
+                if pids:
+                    if self._force_kill_pids(pids):
+                        logger.info("Voice automation force-closed application '%s' (pids=%s)", canonical_name, pids)
+                        return ApplicationCloseResult(True, "closed", canonical_name)
+                elif process_name:
+                    if self._force_kill_windows(process_name):
+                        return ApplicationCloseResult(True, "closed", canonical_name)
+
+                # Final verification
+                if (pids and self._wait_until_pids_exited(pids, 0.5)) or (process_name and self._wait_until_exited(process_name, 0.5)):
+                    return ApplicationCloseResult(True, "closed", canonical_name)
+
+                logger.warning("Failed to close application '%s' (pids=%s)", canonical_name, pids)
+                return ApplicationCloseResult(False, "failed", canonical_name)
 
             if sys.platform == "darwin":
-                subprocess.run(
-                    ["osascript", "-e", f'quit app "{process_name}"'],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                if self._wait_until_exited(process_name, _GRACEFUL_CLOSE_TIMEOUT_SECONDS):
-                    return ApplicationCloseResult(True, "closed", process_name)
-                subprocess.run(
-                    ["pkill", "-f", process_name],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
+                pname = process_name or app
+                for p in ([pname] + resolved_running.process_names):
+                    subprocess.run(["osascript", "-e", f'quit app "{p}"'], capture_output=True, text=True, check=False)
+                if (pids and self._wait_until_pids_exited(pids, _GRACEFUL_CLOSE_TIMEOUT_SECONDS)) or self._wait_until_exited(pname, _GRACEFUL_CLOSE_TIMEOUT_SECONDS):
+                    return ApplicationCloseResult(True, "closed", canonical_name)
+                for pid in pids:
+                    subprocess.run(["kill", "-9", str(pid)], capture_output=True, text=True, check=False)
             else:
-                subprocess.run(
-                    ["pkill", "-f", process_name],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                if not self._wait_until_exited(process_name, _GRACEFUL_CLOSE_TIMEOUT_SECONDS):
-                    subprocess.run(
-                        ["pkill", "-9", "-f", process_name],
-                        capture_output=True,
-                        text=True,
-                        check=False,
-                    )
+                pname = process_name or app
+                for pid in pids:
+                    subprocess.run(["kill", "-15", str(pid)], capture_output=True, text=True, check=False)
+                if not ((pids and self._wait_until_pids_exited(pids, _GRACEFUL_CLOSE_TIMEOUT_SECONDS)) or self._wait_until_exited(pname, _GRACEFUL_CLOSE_TIMEOUT_SECONDS)):
+                    for pid in pids:
+                        subprocess.run(["kill", "-9", str(pid)], capture_output=True, text=True, check=False)
 
-            if self.is_application_running(application_name):
-                return ApplicationCloseResult(False, "failed", process_name)
+            if self.is_application_running(app):
+                return ApplicationCloseResult(False, "failed", canonical_name)
 
-            logger.info(
-                "Voice automation closed application target=%s process=%s",
-                application_name,
-                process_name,
-            )
-            return ApplicationCloseResult(True, "closed", process_name)
+            return ApplicationCloseResult(True, "closed", canonical_name)
         except Exception:
-            logger.exception(
-                "Failed to close application target=%s process=%s",
-                application_name,
-                process_name,
-            )
-            return ApplicationCloseResult(False, "failed", process_name)
-
-    def is_application_running(self, application_name: str) -> bool:
-        """Return True when the mapped process appears to be running."""
-        process_name = self._resolve_process_name(application_name)
-        if process_name is None:
-            return False
-        return self._is_process_running(process_name)
+            logger.exception("Failed to close application target=%s", app)
+            return ApplicationCloseResult(False, "failed", canonical_name)
 
     def _resolve_process_name(self, application_name: str) -> str | None:
         """Map a spoken application name to a platform process identifier."""
         key = (application_name or "").strip().lower()
-        # Accept either friendly names or already-qualified executables.
         if key.endswith(".exe"):
             return key if sys.platform.startswith("win") else key[:-4]
 
         entry = _APP_PROCESS_MAP.get(key)
-        if entry is None:
-            return None
+        if entry is not None:
+            if sys.platform.startswith("win"):
+                return entry["win"]
+            if sys.platform == "darwin":
+                return entry["darwin"]
+            return entry["linux"]
 
-        if sys.platform.startswith("win"):
-            return entry["win"]
-        if sys.platform == "darwin":
-            return entry["darwin"]
-        return entry["linux"]
+        return None
 
     def _is_process_running(self, process_name: str) -> bool:
         """Check whether a process with the given name is currently running."""
@@ -333,7 +475,21 @@ class DesktopController:
             return False
 
     def _list_windows_pids(self, process_name: str) -> list[int]:
-        """Return PIDs for a Windows image name via tasklist CSV output."""
+        """Return PIDs for a Windows image name via psutil or tasklist."""
+        try:
+            import psutil
+            pids = []
+            for p in psutil.process_iter(["pid", "name"]):
+                try:
+                    if (p.info["name"] or "").lower() == process_name.lower():
+                        pids.append(p.info["pid"])
+                except Exception:
+                    pass
+            if pids:
+                return pids
+        except ImportError:
+            pass
+
         try:
             completed = subprocess.run(
                 ["tasklist", "/FI", f"IMAGENAME eq {process_name}", "/FO", "CSV", "/NH"],
@@ -363,20 +519,20 @@ class DesktopController:
                 continue
         return pids
 
-    def _close_application_windows(self, process_name: str) -> bool:
-        """Post WM_CLOSE to top-level visible windows owned by the process."""
-        pids = set(self._list_windows_pids(process_name))
-        if not pids:
+    def _close_windows_by_pids(self, pids: list[int]) -> bool:
+        """Post WM_CLOSE to top-level visible windows owned by the specific PIDs."""
+        pid_set = set(pids)
+        if not pid_set:
             return False
 
         try:
             import ctypes
             from ctypes import wintypes
+            user32 = ctypes.windll.user32
         except Exception:
             logger.exception("ctypes unavailable for graceful window close.")
             return False
 
-        user32 = ctypes.windll.user32
         hwnds: list[int] = []
 
         @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -388,23 +544,66 @@ class DesktopController:
                 return True
             pid = wintypes.DWORD()
             user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if pid.value in pids:
+            if pid.value in pid_set:
                 hwnds.append(int(hwnd))
             return True
 
         user32.EnumWindows(_enum_proc, 0)
-        if not hwnds:
-            logger.info("No visible main windows found for process %s", process_name)
-            return False
-
         for hwnd in hwnds:
             user32.PostMessageW(hwnd, _WM_CLOSE, 0, 0)
-        logger.info(
-            "Posted WM_CLOSE to %d window(s) for process %s",
-            len(hwnds),
-            process_name,
-        )
-        return True
+        logger.info("Posted WM_CLOSE to %d window(s) for PIDs %s", len(hwnds), pids)
+        return bool(hwnds)
+
+    def _close_explorer_windows(self) -> bool:
+        """Post WM_CLOSE strictly to visible File Explorer folder windows (CabinetWClass), never shell/taskbar."""
+        try:
+            import ctypes
+            from ctypes import wintypes
+            user32 = ctypes.windll.user32
+        except Exception:
+            return False
+
+        hwnds: list[int] = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def _enum_proc(hwnd: int, _lparam: int) -> bool:
+            if not user32.IsWindowVisible(hwnd):
+                return True
+            if user32.GetWindow(hwnd, _GW_OWNER):
+                return True
+            class_buf = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, class_buf, 256)
+            class_name = class_buf.value.strip()
+            if class_name in ("CabinetWClass", "ExploreWClass"):
+                hwnds.append(int(hwnd))
+            return True
+
+        user32.EnumWindows(_enum_proc, 0)
+        for hwnd in hwnds:
+            user32.PostMessageW(hwnd, _WM_CLOSE, 0, 0)
+        logger.info("Posted WM_CLOSE to %d File Explorer folder window(s)", len(hwnds))
+        return bool(hwnds)
+
+    def _close_application_windows(self, process_name: str) -> bool:
+        """Post WM_CLOSE to top-level visible windows owned by the process name."""
+        pids = self._list_windows_pids(process_name)
+        return self._close_windows_by_pids(pids)
+
+    def _wait_until_pids_exited(self, pids: list[int], timeout_seconds: float) -> bool:
+        """Poll until target PIDs have terminated or timeout expires."""
+        try:
+            import psutil
+        except ImportError:
+            return True
+
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            remaining = [pid for pid in pids if psutil.pid_exists(pid)]
+            if not remaining:
+                return True
+            time.sleep(0.1)
+        remaining = [pid for pid in pids if psutil.pid_exists(pid)]
+        return len(remaining) == 0
 
     def _wait_until_exited(self, process_name: str, timeout_seconds: float) -> bool:
         """Poll until the process exits or the timeout elapses."""
@@ -414,6 +613,33 @@ class DesktopController:
                 return True
             time.sleep(0.1)
         return not self._is_process_running(process_name)
+
+    def _force_kill_pids(self, pids: list[int]) -> bool:
+        """Force-terminate target PIDs safely."""
+        try:
+            import psutil
+            for pid in pids:
+                if psutil.pid_exists(pid):
+                    try:
+                        p = psutil.Process(pid)
+                        for child in p.children(recursive=True):
+                            try:
+                                child.kill()
+                            except Exception:
+                                pass
+                        p.kill()
+                    except Exception:
+                        pass
+            if self._wait_until_pids_exited(pids, 1.0):
+                return True
+        except Exception:
+            pass
+
+        if sys.platform.startswith("win"):
+            for pid in pids:
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True, text=True, check=False)
+            return self._wait_until_pids_exited(pids, 1.0)
+        return False
 
     def _force_kill_windows(self, process_name: str) -> bool:
         """Force-terminate a Windows process tree via taskkill."""

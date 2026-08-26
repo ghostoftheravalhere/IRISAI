@@ -1,6 +1,6 @@
 {
   "name": "iris-ai",
-  "version": "2.4.2",
+  "version": "2.4.4",
   "description": "IRIS AI — Intelligent Responsive Interface System",
   "main": "electron/main.js",
   "scripts": {
@@ -8,8 +8,11 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && electron .",
     "build": "vite build",
+    "build:backend": "powershell -Command \"Set-Location ..; & backend\\.venv\\Scripts\\python.exe -m PyInstaller --clean -y iris_backend.spec\"",
     "package:dir": "vite build && npx electron-builder --win dir",
     "package:installer": "vite build && npx electron-builder --win nsis portable",
+    "package:win": "vite build && npx electron-builder --win",
+    "package:all": "npm run build:backend && npm run package:installer",
     "electron": "electron .",
     "preview": "vite preview",
     "lint": "eslint src --ext .js,.jsx"
@@ -26,7 +29,7 @@
     ],
     "extraResources": [
       {
-        "from": "../backend/dist/iris_backend",
+        "from": "../dist/iris_backend",
         "to": "backend"
       }
     ],
@@ -53,11 +56,11 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "IRIS AI",
-      "artifactName": "IRIS-AI-V2.4.2-Setup.${ext}",
+      "artifactName": "IRIS-AI-Setup-v2.4.4.${ext}",
       "uninstallDisplayName": "IRIS AI"
     },
     "portable": {
-      "artifactName": "IRIS-AI-V2.4.2-Portable.exe"
+      "artifactName": "IRIS-AI-v2.4.4-portable.exe"
     }
   },
   "dependencies": {

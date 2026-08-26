@@ -4,6 +4,7 @@ Creates and configures the FastAPI app with all routers and middleware.
 """
 import asyncio
 from contextlib import asynccontextmanager
+import sys
 import time
 from typing import Any
 
@@ -128,9 +129,22 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/health")
     async def get_health_status():
         """Return runtime platform component health status and diagnostics."""
+        base_status = {
+            "status": "HEALTHY",
+            "version": settings.APP_VERSION,
+            "executable": sys.executable,
+            "is_frozen": getattr(sys, "frozen", False),
+            "resolver": "universal_v2.4.3",
+        }
         if hasattr(app.state, "diagnostics_service"):
-            return app.state.diagnostics_service.generate_snapshot()
-        return {"status": "HEALTHY"}
+            try:
+                snap = app.state.diagnostics_service.generate_snapshot()
+                if isinstance(snap, dict):
+                    snap.update(base_status)
+                    return snap
+            except Exception:
+                pass
+        return base_status
 
     @app.get("/api/v1/diagnostics")
     async def get_diagnostics():

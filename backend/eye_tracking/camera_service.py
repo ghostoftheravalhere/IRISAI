@@ -255,35 +255,37 @@ class CameraService:
 
         samples: list[EyeData] = []
         collect_deadline = monotonic() + timeout_s
-        previous_center: tuple[float, float] | None = None
+        previous_eye_data: EyeData | None = None
+        face_polls = 0
+        total_polls = 0
         while len(samples) < count and monotonic() < collect_deadline:
+            total_polls += 1
             eye_data = self.get_latest_eye_data()
             if eye_data is None:
                 sleep(poll_s)
                 continue
 
-            # Sprint 1: shared helper removes duplicate eye-center averaging logic.
+            face_polls += 1
+            # Avoid re-sampling the identical camera frame before the background thread updates
+            if eye_data is previous_eye_data:
+                sleep(poll_s)
+                continue
+
             center = compute_eye_center(eye_data)
             if center is None:
                 sleep(poll_s)
                 continue
 
-            # Skip near-duplicate frames from camera buffering.
-            if previous_center is not None:
-                dx = center[0] - previous_center[0]
-                dy = center[1] - previous_center[1]
-                if (dx * dx + dy * dy) < 1e-12:
-                    sleep(poll_s)
-                    continue
-
             samples.append(eye_data)
-            previous_center = center
+            previous_eye_data = eye_data
             sleep(poll_s)
 
         logger.info(
-            "Collected %d/%d calibration eye frames (stabilize=%.0fms timeout=%.0fms).",
+            "[CAMERA DIAGNOSTIC] Collected %d/%d calibration eye frames (polls=%d, face_polls=%d, stabilize=%.0fms timeout=%.0fms).",
             len(samples),
             count,
+            total_polls,
+            face_polls,
             settle_ms,
             max_ms,
         )

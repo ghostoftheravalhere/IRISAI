@@ -22,13 +22,13 @@ logger = get_logger(__name__)
 TranscriptHandler = Callable[[str], tuple[str, str]]
 
 
-def resolve_whisper_model_path(model_size_or_name: str = "base", explicit_path: str | None = None) -> str:
+def resolve_whisper_model_path(model_size_or_name: str = "base.en", explicit_path: str | None = None) -> str:
     """
     Resolves the Faster-Whisper model size string or local directory path for offline use.
     Resolution order:
     1. explicit_path if provided and exists
     2. settings.VOICE_MODEL_PATH if set and exists
-    3. Bundled production resources: resources/models/whisper-base or resources/models/<model_size>
+    3. Bundled production resources: resources/models/whisper-base.en or resources/models/<model_size>
     4. Fallback to model_size_or_name string for Hugging Face cache / dev mode
     """
     if explicit_path and os.path.exists(explicit_path):
@@ -53,6 +53,7 @@ def resolve_whisper_model_path(model_size_or_name: str = "base", explicit_path: 
 
     candidate_names = [
         f"whisper-{model_size_or_name}",
+        f"whisper-{model_size_or_name.replace('.', '-')}",
         f"whisper-{model_size_or_name}-en",
         model_size_or_name,
     ]
@@ -83,15 +84,16 @@ _COMMAND_INITIAL_PROMPT: str | None = None
 class VoiceRecognitionConfig:
     """Voice recognition runtime configuration."""
 
-    model_size: str = "base"
+    model_size: str = "base.en"
     model_path: str | None = None
     sample_rate: int = 16000
     language: str = "en"
     device: str = "cpu"
     compute_type: str = "int8"
+    cpu_threads: int = 4
     block_duration_seconds: float = 0.25
     silence_threshold: float = 0.010
-    silence_duration_seconds: float = 0.55
+    silence_duration_seconds: float = 0.40
     min_utterance_seconds: float = 0.35
     max_utterance_seconds: float = 4.0
     trailing_silence_blocks: int = 1
@@ -766,8 +768,8 @@ class VoiceRecognitionService:
             language=self._config.language,
             task="transcribe",
             vad_filter=use_vad_filter,
-            beam_size=5,
-            best_of=5,
+            beam_size=2,
+            best_of=2,
             temperature=0.0,
             condition_on_previous_text=False,
             initial_prompt=_COMMAND_INITIAL_PROMPT,
@@ -825,11 +827,13 @@ class VoiceRecognitionService:
                 model_size_or_name=self._config.model_size,
                 explicit_path=self._config.model_path,
             )
-            logger.info("Loading Faster-Whisper model from: %s", target_model_path)
+            num_threads = getattr(self._config, "cpu_threads", 4) or 4
+            logger.info("Loading Faster-Whisper model from: %s (cpu_threads=%d)", target_model_path, num_threads)
             model = WhisperModel(
                 target_model_path,
                 device=self._config.device,
                 compute_type=self._config.compute_type,
+                cpu_threads=num_threads,
             )
         except Exception as exc:
             raise RuntimeError("Whisper failure.") from exc

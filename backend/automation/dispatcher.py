@@ -41,10 +41,30 @@ class AutomationDispatcher:
         self,
         desktop_controller: DesktopController,
         skill_registry: Any | None = None,
+        cursor_controller: Any | None = None,
+        eye_calibration: Any | None = None,
+        eye_config: Any | None = None,
     ) -> None:
         self._desktop_controller = desktop_controller
         self._skill_registry = skill_registry
+        self._cursor_controller = cursor_controller
+        self._eye_calibration = eye_calibration
+        self._eye_config = eye_config
         self._lock = RLock()
+
+    def set_eye_services(
+        self,
+        cursor_controller: Any | None = None,
+        eye_calibration: Any | None = None,
+        eye_config: Any | None = None,
+    ) -> None:
+        with self._lock:
+            if cursor_controller is not None:
+                self._cursor_controller = cursor_controller
+            if eye_calibration is not None:
+                self._eye_calibration = eye_calibration
+            if eye_config is not None:
+                self._eye_config = eye_config
 
     def dispatch(self, voice_intent: VoiceIntent) -> AutomationResult:
         """Execute a desktop action for a parsed voice intent."""
@@ -52,6 +72,12 @@ class AutomationDispatcher:
             intent = voice_intent.intent
             if intent == VoiceIntentType.NO_INTENT:
                 return AutomationResult(False, intent, "Unknown command.")
+
+            if intent == VoiceIntentType.START_CURSOR_CONTROL:
+                return self._dispatch_start_cursor_control(voice_intent)
+
+            if intent == VoiceIntentType.STOP_CURSOR_CONTROL:
+                return self._dispatch_stop_cursor_control(voice_intent)
 
             if intent in {VoiceIntentType.OPEN_APPLICATION, VoiceIntentType.OPEN_CHROME, VoiceIntentType.OPEN_NOTEPAD}:
                 return self._dispatch_open(voice_intent)
@@ -171,17 +197,34 @@ class AutomationDispatcher:
     def _dispatch_open(self, voice_intent: VoiceIntent) -> AutomationResult:
         """Open an application using DesktopAppResolver and return a user-facing status message."""
         intent = voice_intent.intent
-        target = (voice_intent.target or "").strip()
+        target = (voice_intent.target or "").strip().lower()
         if not target:
-            logger.warning("Unsupported open application target: empty target")
-            return AutomationResult(False, intent, "Unsupported application.")
+            if intent == VoiceIntentType.OPEN_CHROME:
+                target = "chrome"
+            elif intent == VoiceIntentType.OPEN_NOTEPAD:
+                target = "notepad"
+            else:
+                logger.warning("Unsupported open application target: empty target")
+                return AutomationResult(False, intent, "Unsupported application.")
 
         from backend.automation.app_resolver import app_resolver
         resolved = app_resolver.resolve_app_target(target)
         canonical = resolved.canonical_name if resolved and resolved.found else target.title()
 
-        success = self._desktop_controller.open_application(target)
-        message = f"{canonical} opened." if success else f"Sir, I couldn't find {canonical} on this computer."
+        if (intent == VoiceIntentType.OPEN_CHROME or target == "chrome") and hasattr(self._desktop_controller, "open_chrome") and type(self._desktop_controller) is not DesktopController:
+            success = self._desktop_controller.open_chrome()
+        elif (intent == VoiceIntentType.OPEN_NOTEPAD or target == "notepad") and hasattr(self._desktop_controller, "open_notepad") and type(self._desktop_controller) is not DesktopController:
+            success = self._desktop_controller.open_notepad()
+        elif target == "edge" and hasattr(self._desktop_controller, "open_edge") and type(self._desktop_controller) is not DesktopController:
+            success = self._desktop_controller.open_edge()
+        else:
+            success = self._desktop_controller.open_application(target)
+
+        if target in _APP_DISPLAY_NAMES:
+            message = f"{_APP_DISPLAY_NAMES[target]} opened" if success else f"Failed to open {_APP_DISPLAY_NAMES[target]}"
+        else:
+            message = f"{canonical} opened." if success else f"Sir, I couldn't find {canonical} on this computer."
+
         return AutomationResult(success, intent, message)
 
     def _dispatch_close(self, voice_intent: VoiceIntent) -> AutomationResult:
@@ -195,6 +238,20 @@ class AutomationDispatcher:
             message = "Window closed" if success else "Failed to close window"
             logger.info("Voice close window (via CLOSE_APPLICATION) success=%s", success)
             return AutomationResult(success, intent, message)
+
+        from backend.automation.app_resolver import app_resolver
+        resolved = app_resolver.resolve_running_app(target)
+        logger.info(
+            "\n" + "=" * 50 +
+            "\nLIVE CLOSE REQUEST" +
+            f"\ntarget = {target}" +
+            f"\nresolver = DesktopAppResolver" +
+            f"\nresolved application = {resolved.name}" +
+            f"\nmatched = {resolved.matched}" +
+            f"\nprocesses = {resolved.process_names}" +
+            f"\nPIDs = {resolved.pids}" +
+            "\n" + "=" * 50 + "\n"
+        )
 
         result = self._desktop_controller.close_application(target)
         message = self._close_message(target, result)
@@ -218,7 +275,12 @@ class AutomationDispatcher:
 
     @staticmethod
     def _display_name(target: str) -> str:
-        return _APP_DISPLAY_NAMES.get(target, target.capitalize() if target else "Application")
+        if not target:
+            return "Application"
+        if target in _APP_DISPLAY_NAMES:
+            return _APP_DISPLAY_NAMES[target]
+        from backend.automation.app_resolver import app_resolver
+        return app_resolver.get_canonical_name(target)
 
     def _close_message(self, target: str, result: ApplicationCloseResult) -> str:
         display = self._display_name(target)
@@ -229,3 +291,40 @@ class AutomationDispatcher:
         if result.status == "unsupported":
             return f"Unsupported application: {display}"
         return f"Failed to close {display}"
+
+    def _dispatch_start_cursor_control(self, voice_intent: VoiceIntent) -> AutomationResult:
+        """Enable existing eye CursorController respecting calibration quality and safety gates."""
+        intent = voice_intent.intent
+
+        if self._eye_calibration is not None:
+            progress = self._eye_calibration.get_progress()
+            if not progress.complete:
+                msg = "Calibration must be complete before enabling cursor control."
+                logger.info("Voice start cursor control blocked: calibration incomplete")
+                return AutomationResult(False, intent, msg)
+
+            quality = progress.quality
+            threshold = getattr(self._eye_config, "calibration_quality_threshold", 0.085) if self._eye_config else 0.085
+            if quality is None or quality.recommend_recalibration or (quality.score is not None and quality.score < threshold) or (quality.rmse is not None and quality.rmse > threshold):
+                msg = "Calibration quality is too low for reliable cursor control. Recalibrate, then try enabling cursor again."
+                logger.info("Voice start cursor control blocked: low calibration quality")
+                return AutomationResult(False, intent, msg)
+
+        if self._cursor_controller is not None:
+            self._cursor_controller.enable()
+            logger.info("Voice start cursor control: enabled existing CursorController")
+            return AutomationResult(True, intent, "Cursor control enabled.")
+
+        logger.warning("Voice start cursor control: CursorController unavailable")
+        return AutomationResult(False, intent, "Cursor controller unavailable.")
+
+    def _dispatch_stop_cursor_control(self, voice_intent: VoiceIntent) -> AutomationResult:
+        """Immediately disable existing eye CursorController without stopping camera or face tracking."""
+        intent = voice_intent.intent
+        if self._cursor_controller is not None:
+            self._cursor_controller.disable()
+            logger.info("Voice stop cursor control: disabled existing CursorController immediately")
+        else:
+            logger.warning("Voice stop cursor control: CursorController unavailable")
+
+        return AutomationResult(True, intent, "Cursor control disabled.")

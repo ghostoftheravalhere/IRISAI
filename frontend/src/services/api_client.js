@@ -3,233 +3,177 @@ import config from "../config.js";
 const API_BASE_URL = config.API_BASE_URL;
 const WS_BASE_URL = config.WS_BASE_URL;
 
+async function safeFetchJson(url, options = {}) {
+  try {
+    const res = await fetch(url, options);
+    const contentType = res.headers.get("content-type") || "";
+    let data = null;
+    if (contentType.includes("application/json")) {
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+    } else {
+      const text = await res.text().catch(() => "");
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = null;
+        }
+      }
+    }
+
+    if (!res.ok) {
+      const errorMsg =
+        (data && (data.detail || data.error || data.message)) ||
+        `HTTP ${res.status}`;
+      return { ok: false, status: res.status, data, error: errorMsg };
+    }
+    return { ok: true, status: res.status, data: data ?? {} };
+  } catch (e) {
+    return { ok: false, status: 0, error: e.message || "Network request failed" };
+  }
+}
+
 export class IRISApiClient {
   static async getHealth() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/health`);
-      return await res.json();
-    } catch (e) {
-      return { status: "OFFLINE", error: e.message };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/v1/health`);
+    return res.ok ? res.data : { status: "OFFLINE", error: res.error };
   }
 
   static async getMetrics() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/metrics`);
-      return await res.json();
-    } catch (e) {
-      return { counters: {}, gauges: {}, latency_ms: {} };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/v1/metrics`);
+    return res.ok ? res.data : { counters: {}, gauges: {}, latency_ms: {} };
   }
 
   static async getSkills() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/skills`);
-      return await res.json();
-    } catch (e) {
-      return { skills: [] };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/v1/skills`);
+    return res.ok ? res.data : { skills: [] };
   }
 
   static async executeCommand(commandText) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/execute`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: commandText }),
-      });
-      return await res.json();
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/v1/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command: commandText }),
+    });
+    return res.ok ? res.data : { success: false, error: res.error };
   }
 
   static async getWorldSnapshot() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/context/snapshot`);
-      return await res.json();
-    } catch (e) {
-      return null;
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/v1/context/snapshot`);
+    return res.ok ? res.data : null;
   }
 
   static async speak(text) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/voice/speak`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      return await res.json();
-    } catch (e) {
-      return { success: false, error: e.message };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/v1/voice/speak`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    return res.ok ? res.data : { success: false, error: res.error };
   }
 
   static async startVoice(mode = "continuous") {
-    try {
-      const res = await fetch(`${API_BASE_URL}/voice/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
-      });
-      return await res.json();
-    } catch (e) {
-      return { microphoneStatus: "Error", error: e.message };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/voice/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    });
+    return res.ok ? res.data : { microphoneStatus: "Error", error: res.error };
   }
 
   static async stopVoice() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/voice/stop`, { method: "POST" });
-      return await res.json();
-    } catch (e) {
-      return { microphoneStatus: "Off", error: e.message };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/voice/stop`, { method: "POST" });
+    return res.ok ? res.data : { microphoneStatus: "Off", error: res.error };
   }
 
   static async getVoiceDiagnostics() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/voice/diagnostics`);
-      return await res.json();
-    } catch (e) {
-      return null;
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/v1/voice/diagnostics`);
+    return res.ok ? res.data : null;
   }
 
   static async retryVoice() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/voice/retry`, { method: "POST" });
-      return await res.json();
-    } catch (e) {
-      return { microphoneStatus: "Error", error: e.message };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/v1/voice/retry`, { method: "POST" });
+    return res.ok ? res.data : { microphoneStatus: "Error", error: res.error };
   }
 
   static async getVoiceStatus() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/voice/status`);
-      return await res.json();
-    } catch (e) {
-      return null;
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/voice/status`);
+    return res.ok ? res.data : null;
   }
 
   static async startCamera() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/camera/start`, { method: "POST" });
-      return await res.json();
-    } catch (e) {
-      return { connected: false, running: false, error: e.message };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/camera/start`, { method: "POST" });
+    return res.ok ? res.data : { connected: false, running: false, error: res.error };
   }
 
   static async stopCamera() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/camera/stop`, { method: "POST" });
-      return await res.json();
-    } catch (e) {
-      return { connected: false, running: false, error: e.message };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/camera/stop`, { method: "POST" });
+    return res.ok ? res.data : { connected: false, running: false, error: res.error };
   }
 
   static async getCameraStatus() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/camera/status`);
-      return await res.json();
-    } catch (e) {
-      return { connected: false, running: false };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/camera/status`);
+    return res.ok ? res.data : { connected: false, running: false };
   }
 
   static async getDiagnostics() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/diagnostics`);
-      return await res.json();
-    } catch (e) {
-      return null;
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/v1/diagnostics`);
+    return res.ok ? res.data : null;
   }
 
   static async getEyeStatus() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/eye/status`);
-      return await res.json();
-    } catch (e) {
-      return null;
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/eye/status`);
+    return res.ok ? res.data : null;
   }
 
   static async restartCalibration() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/eye/calibration/restart`, { method: "POST" });
-      return await res.json();
-    } catch (e) {
-      return null;
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/eye/calibration/restart`, { method: "POST" });
+    return res.ok ? res.data : { error: res.error };
   }
 
   static async captureCalibrationPoint() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/eye/calibration/capture`, { method: "POST" });
-      return await res.json();
-    } catch (e) {
-      return { error: e.message };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/eye/calibration/capture`, { method: "POST" });
+    return res.ok ? res.data : { error: res.error };
   }
 
   static async enableCursor() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/eye/cursor/enable`, { method: "POST" });
-      return await res.json();
-    } catch (e) {
-      return { enabled: false, error: e.message };
+    const res = await safeFetchJson(`${API_BASE_URL}/eye/cursor/enable`, { method: "POST" });
+    if (!res.ok) {
+      return { enabled: false, error: res.error };
     }
+    return res.data;
   }
 
   static async disableCursor() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/eye/cursor/disable`, { method: "POST" });
-      return await res.json();
-    } catch (e) {
-      return { enabled: false, error: e.message };
+    const res = await safeFetchJson(`${API_BASE_URL}/eye/cursor/disable`, { method: "POST" });
+    if (!res.ok) {
+      return { enabled: false, error: res.error };
     }
+    return res.data;
   }
 
   static async getGoogleStatus() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/google/status`);
-      return await res.json();
-    } catch (e) {
-      return { is_connected: false };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/auth/google/status`);
+    return res.ok ? res.data : { is_connected: false };
   }
 
   static async getGitHubStatus() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/github/status`);
-      return await res.json();
-    } catch (e) {
-      return { is_connected: false };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/auth/github/status`);
+    return res.ok ? res.data : { is_connected: false };
   }
 
   static async getEventHistory() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/events/history`);
-      return await res.json();
-    } catch (e) {
-      return { events: [] };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/v1/events/history`);
+    return res.ok ? res.data : { events: [] };
   }
 
   static async getInstalledApps() {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/v1/apps`);
-      return await res.json();
-    } catch (e) {
-      return { applications: [] };
-    }
+    const res = await safeFetchJson(`${API_BASE_URL}/api/v1/apps`);
+    return res.ok ? res.data : { applications: [] };
   }
 }
 

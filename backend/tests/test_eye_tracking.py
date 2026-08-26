@@ -6,8 +6,17 @@ import sys
 from types import ModuleType
 
 # Keep these tests runnable without OpenCV/MediaPipe installed in the env.
-if "cv2" not in sys.modules:
-    sys.modules["cv2"] = ModuleType("cv2")
+try:
+    import cv2
+except ImportError:
+    if "cv2" not in sys.modules:
+        fake_cv2 = ModuleType("cv2")
+        fake_cv2.__version__ = "4.10.0"
+        sys.modules["cv2"] = fake_cv2
+else:
+    if not hasattr(cv2, "__version__"):
+        cv2.__version__ = "4.10.0"
+
 if "mediapipe" not in sys.modules:
     mediapipe = ModuleType("mediapipe")
     mediapipe.solutions = ModuleType("mediapipe.solutions")
@@ -224,3 +233,136 @@ def test_gaze_confidence_does_not_collapse_from_clamped_jitter() -> None:
     )
     # Previous formula used raw vs clamped EMA → stability 0 and confidence ~0.31.
     assert confidence >= 0.40
+
+
+def test_point_7_downgaze_sample_acceptance() -> None:
+    """Downgaze eye frames with natural eyelid excursion (EAR ~0.24) must be accepted."""
+    config = EyeInteractionConfig()
+    service = EyeCalibrationService(eye_config=config)
+
+    # Build 20 downgaze frames with EAR ~0.24 (half_height = 0.0096)
+    downgaze_samples = []
+    for _ in range(20):
+        left_eye = _landmarks_for_eye(
+            LEFT_EYE_LANDMARK_INDICES,
+            _LEFT_EAR,
+            cx=0.12,
+            cy=0.88,
+            open_eye=True,
+        )
+        right_eye = _landmarks_for_eye(
+            RIGHT_EYE_LANDMARK_INDICES,
+            _RIGHT_EAR,
+            cx=0.08,
+            cy=0.88,
+            open_eye=True,
+        )
+        downgaze_samples.append(EyeData(left_eye=left_eye, right_eye=right_eye))
+
+    # All 20 frames should be valid
+    assert all(service._is_valid_calibration_frame(s) for s in downgaze_samples)
+
+    # Point 7 should aggregate and record successfully
+    # Simulate first 6 points recorded
+    for i in range(6):
+        pt = service.points[i]
+        s = [_eye_data(cx=pt.x, cy=pt.y) for _ in range(20)]
+        service.record_current_point_from_samples(s)
+
+    prog_before = service.get_progress()
+    assert prog_before.completed_points == 6
+    assert prog_before.current_point.index == 6  # Point 7
+
+    prog_after = service.record_current_point_from_samples(downgaze_samples)
+    assert prog_after.completed_points == 7
+    assert prog_after.current_point.index == 7  # Advanced to Point 8
+
+
+def test_point_specific_retry_preserves_previous_points() -> None:
+    """Failing a point capture must preserve earlier points and allow retry."""
+    config = EyeInteractionConfig()
+    service = EyeCalibrationService(eye_config=config)
+
+    # Complete Points 1-6
+    for i in range(6):
+        pt = service.points[i]
+        service.record_current_point_from_samples([_eye_data(cx=pt.x, cy=pt.y) for _ in range(20)])
+
+    assert service.get_progress().completed_points == 6
+    assert service.get_progress().current_point.index == 6  # Point 7
+
+    # Attempt capture with empty / invalid samples (simulating movement/timeout)
+    with pytest.raises(CalibrationCaptureError):
+        service.record_current_point_from_samples([])
+
+    # Verify Points 1-6 remain completely intact
+    prog = service.get_progress()
+    assert prog.completed_points == 6
+    assert prog.current_point.index == 6  # Still on Point 7
+
+    # Retry Point 7 with valid samples
+    pt7 = service.points[6]
+    valid_pt7_samples = [_eye_data(cx=pt7.x, cy=pt7.y) for _ in range(20)]
+    prog_retry = service.record_current_point_from_samples(valid_pt7_samples)
+
+    assert prog_retry.completed_points == 7
+    assert prog_retry.current_point.index == 7  # Advanced to Point 8
+
+
+def test_all_9_points_full_calibration_flow() -> None:
+    """All 9 points must record and compute valid mapping with dynamic RMSE."""
+    config = EyeInteractionConfig()
+    service = EyeCalibrationService(eye_config=config)
+
+    for i in range(9):
+        pt = service.points[i]
+        samples = [_eye_data(cx=pt.x * 0.3 + 0.35 + 0.001 * (i % 3), cy=pt.y * 0.3 + 0.35) for _ in range(20)]
+        prog = service.record_current_point_from_samples(samples)
+
+    final_prog = service.get_progress()
+    assert final_prog.complete is True
+    assert final_prog.completed_points == 9
+    assert final_prog.quality is not None
+    assert final_prog.quality.score > 0.50
+    assert final_prog.quality.rmse >= 0.0
+    assert service.get_mapping() is not None
+
+
+def test_optimized_eye_config_defaults() -> None:
+    """Verify optimized eye interaction thresholds for snappier clicking and responsiveness."""
+    config = EyeInteractionConfig()
+    assert config.intentional_blink_min_ms == 400.0
+    assert config.cursor_smoothing_alpha == 0.20
+    assert config.cursor_dead_zone_px == 15.0
+
+
+def test_cursor_controller_triggers_click_feedback() -> None:
+    """Verify pointer action execution triggers the click feedback pop-up."""
+    from unittest.mock import MagicMock, patch
+    from backend.eye_tracking.action_engine import ActionState, ActionType
+    from backend.eye_tracking.cursor_controller import CursorController
+
+    mock_gaze = MagicMock()
+    controller = CursorController(gaze_service=mock_gaze)
+    mock_pyautogui = MagicMock()
+
+    action_state = ActionState(
+        action=ActionType.LEFT_CLICK,
+        timestamp=123.456,
+        sourceGesture=MagicMock(),
+        sourceGestureTimestamp=123.400,
+        cursorPaused=False,
+        dragMode=False,
+        cooldownActive=False,
+    )
+
+    with patch("backend.eye_tracking.click_feedback_overlay.show_click_feedback_popup") as mock_popup:
+        controller._last_action_timestamp = 123.456
+        controller._last_x = 400
+        controller._last_y = 300
+        controller._execute_pointer_action(mock_pyautogui, action_state)
+
+        mock_pyautogui.click.assert_called_once_with(button="left")
+        mock_popup.assert_called_once_with(text="Left Click", duration_ms=900, x=400, y=300)
+
+

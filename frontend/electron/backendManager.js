@@ -103,8 +103,15 @@ class BackendManager {
           if (res.statusCode === 200) {
             try {
               const data = JSON.parse(body);
-              if (data && (data.status === "online" || data.status === "ok")) {
-                resolve({ online: true, iris: true });
+              if (data && (data.status === "online" || data.status === "ok" || data.status === "HEALTHY")) {
+                const isNewResolver = data.resolver === "universal_v2.4.3";
+                resolve({
+                  online: true,
+                  iris: true,
+                  isNewResolver,
+                  version: data.version,
+                  executable: data.executable,
+                });
                 return;
               }
             } catch (e) {
@@ -159,10 +166,31 @@ class BackendManager {
       // 1. Check if backend is already running
       const existing = await this.checkHealthOnce();
       if (existing.online && existing.iris) {
-        console.log("[ELECTRON] Found healthy existing IRIS backend on 127.0.0.1:8000 — reusing instance.");
-        this.ownedByElectron = false;
-        this.setStatus("ready", "Connected to existing IRIS backend");
-        return true;
+        if (existing.isNewResolver) {
+          console.log(`[ELECTRON] Found healthy active IRIS v2.4.3 backend on 127.0.0.1:8000 (exe=${existing.executable}) — reusing instance.`);
+          this.ownedByElectron = false;
+          this.setStatus("ready", "Connected to existing IRIS backend");
+          return true;
+        } else {
+          console.warn("[ELECTRON] Found STALE backend on port 8000 (missing universal_v2.4.3 resolver). Terminating stale backend...");
+          if (process.platform === "win32") {
+            try {
+              const { execSync } = require("child_process");
+              const netstat = execSync('netstat -ano -p tcp | findstr :8000', { encoding: "utf8" });
+              const lines = netstat.trim().split("\n");
+              for (const line of lines) {
+                const parts = line.trim().split(/\s+/);
+                const pid = parts[parts.length - 1];
+                if (pid && !isNaN(pid) && parseInt(pid, 10) > 0) {
+                  console.log(`[ELECTRON] Killing stale port 8000 process PID ${pid}...`);
+                  execSync(`taskkill /F /PID ${pid} /T`);
+                }
+              }
+            } catch (e) {
+              console.warn("[ELECTRON] Could not auto-kill stale port 8000 process:", e.message);
+            }
+          }
+        }
       }
 
       if (existing.online && !existing.iris) {
@@ -176,6 +204,7 @@ class BackendManager {
       const backendDir = this.getBackendDir();
       const isPkg = this.isPackaged();
       const args = isPkg ? [] : ["main.py"];
+      const repoRoot = path.resolve(__dirname, "../../");
 
       const logMsg = `[PROD] backend executable=${backendExec} (exists=${require("fs").existsSync(backendExec)}) cwd=${backendDir}`;
       console.log(logMsg);
@@ -192,7 +221,13 @@ class BackendManager {
 
       this.childProcess = spawn(backendExec, args, {
         cwd: backendDir,
-        env: { ...process.env, PYTHONUNBUFFERED: "1" },
+        windowsHide: true,
+        env: {
+          ...process.env,
+          PYTHONUNBUFFERED: "1",
+          PYTHONPATH: repoRoot,
+          PYTHONIOENCODING: "utf-8",
+        },
         stdio: ["ignore", "pipe", "pipe"],
       });
 

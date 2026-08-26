@@ -13,8 +13,11 @@ if getattr(sys, "frozen", False):
     try:
         import api
         import agent
+        import automation
+        import brain
         import config
         import core
+        import eye_tracking
         import perception
         import utils
         import voice
@@ -22,16 +25,21 @@ if getattr(sys, "frozen", False):
         sys.modules["backend"] = types.ModuleType("backend")
         sys.modules["backend.api"] = api
         sys.modules["backend.agent"] = agent
+        sys.modules["backend.automation"] = automation
+        sys.modules["backend.brain"] = brain
         sys.modules["backend.config"] = config
         sys.modules["backend.core"] = core
+        sys.modules["backend.eye_tracking"] = eye_tracking
         sys.modules["backend.perception"] = perception
         sys.modules["backend.utils"] = utils
         sys.modules["backend.voice"] = voice
     except Exception as e:
         pass
 else:
-    # Allow running as `python main.py` from inside backend/
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    # Allow running as `python main.py` from inside backend/ or from workspace root
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
 
 import uvicorn
 try:

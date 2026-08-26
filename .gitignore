@@ -12,6 +12,7 @@ build/
 develop-eggs/
 dist/
 frontend/release/
+frontend/release_out/
 downloads/
 eggs/
 .eggs/

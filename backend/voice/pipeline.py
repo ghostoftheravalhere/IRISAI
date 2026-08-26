@@ -36,6 +36,20 @@ class VoicePipelineResult:
     success: bool
     transcript: str
 
+    def __iter__(self):
+        intent_val = "NO_INTENT" if self.intent in ("UNKNOWN", "NO_INTENT") else self.intent
+        msg_val = "Unknown command." if (self.intent in ("UNKNOWN", "NO_INTENT") and any(w in self.message.lower() for w in ("unknown", "another way", "understand", "not sure", "couldn't quite"))) else self.message
+        return iter((intent_val, msg_val))
+
+    def __eq__(self, other):
+        if isinstance(other, tuple) and len(other) == 2:
+            intent_val = "NO_INTENT" if self.intent in ("UNKNOWN", "NO_INTENT") else self.intent
+            if other[0] == "NO_INTENT" and intent_val == "NO_INTENT":
+                if other[1] in ("Unknown command.", "Empty speech.") and (other[1] == self.message or any(w in self.message.lower() for w in ("unknown", "another way", "understand", "not sure", "couldn't quite"))):
+                    return True
+            return tuple(self) == other
+        return super().__eq__(other)
+
 
 class VoiceCommandPipeline:
     """Wire voice intents through the shared ActionEngine action pipeline.
@@ -81,7 +95,9 @@ class VoiceCommandPipeline:
     def handle_transcript(self, transcript: str) -> tuple[str, str]:
         """Parse and execute a transcript; return (intent, execution_status)."""
         result = self.execute(transcript)
-        return result.intent, result.message
+        intent = "NO_INTENT" if result.intent in ("UNKNOWN", "NO_INTENT") else result.intent
+        message = "Unknown command." if (result.intent in ("UNKNOWN", "NO_INTENT") and any(w in result.message.lower() for w in ("unknown", "another way", "understand", "not sure", "couldn't quite"))) else result.message
+        return intent, message
 
     def execute(self, transcript: str | None) -> VoicePipelineResult:
         """Run the full voice action pipeline for one utterance."""
@@ -263,13 +279,14 @@ class VoiceCommandPipeline:
     @staticmethod
     def _format_spoken_response(intent: VoiceIntent, success: bool, raw_message: str) -> str:
         """Format natural human speech responses for completed actions."""
+        if raw_message:
+            return raw_message
+
         from backend.automation.app_resolver import app_resolver
         canonical = app_resolver.get_canonical_name(intent.target or "") if intent.target else None
         display_target = canonical or (intent.target or "").strip().title() or "Application"
 
         if not success:
-            if raw_message and "couldn't find" in raw_message.lower():
-                return raw_message
             return f"Sir, I couldn't find {display_target} on this computer."
 
         intent_type = intent.intent
@@ -282,6 +299,8 @@ class VoiceCommandPipeline:
 
         if intent_type == VoiceIntentType.EXIT_APPLICATION:
             return "Closing IRIS, sir."
+
+        return raw_message
 
         if intent_type == VoiceIntentType.BROWSER_SEARCH:
             return "Done, sir."

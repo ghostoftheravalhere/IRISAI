@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # App
     APP_ENV: str = "development"
-    APP_VERSION: str = "2.4.2"
+    APP_VERSION: str = "2.4.4"
     DEBUG: bool = True
 
     # Database
@@ -26,12 +26,12 @@ class Settings(BaseSettings):
     GAZE_SMOOTHING: float = 0.28
     EAR_CLOSE_THRESHOLD: float = 0.21
     EAR_OPEN_THRESHOLD: float = 0.26
-    INTENTIONAL_BLINK_MIN_MS: float = 500.0
+    INTENTIONAL_BLINK_MIN_MS: float = 400.0
     INTENTIONAL_BLINK_MAX_MS: float = 1200.0
     DOUBLE_LONG_BLINK_WINDOW_MS: float = 400.0
     CURSOR_SENSITIVITY: float = 0.92
-    CURSOR_SMOOTHING: float = 0.12
-    CURSOR_DEAD_ZONE_PX: float = 28.0
+    CURSOR_SMOOTHING: float = 0.20
+    CURSOR_DEAD_ZONE_PX: float = 15.0
     CURSOR_MIN_MOVE_PX: float = 2.5
     CURSOR_MAX_STEP_PX: float = 48.0
     TRACKING_CONFIDENCE_THRESHOLD: float = 0.45
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     OVERLAY_MODE: str = "normal"
 
     # Voice
-    WHISPER_MODEL: str = "base"
+    WHISPER_MODEL: str = "base.en"
     VOICE_MODEL_PATH: str | None = None
     MIC_SAMPLE_RATE: int = 16000
     VOICE_LISTEN_MODE: str = "continuous"
