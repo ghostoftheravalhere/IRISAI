@@ -104,7 +104,7 @@ class BackendManager {
             try {
               const data = JSON.parse(body);
               if (data && (data.status === "online" || data.status === "ok" || data.status === "HEALTHY")) {
-                const isNewResolver = data.resolver === "universal_v2.4.3";
+                const isNewResolver = data.resolver === "universal_v2.4.4" || data.resolver === "universal_v2.4.3" || (data.resolver && data.resolver.startsWith("universal_v2.4"));
                 resolve({
                   online: true,
                   iris: true,
@@ -167,12 +167,12 @@ class BackendManager {
       const existing = await this.checkHealthOnce();
       if (existing.online && existing.iris) {
         if (existing.isNewResolver) {
-          console.log(`[ELECTRON] Found healthy active IRIS v2.4.3 backend on 127.0.0.1:8000 (exe=${existing.executable}) — reusing instance.`);
+          console.log(`[ELECTRON] Found healthy active IRIS backend on 127.0.0.1:8000 (exe=${existing.executable}) — reusing instance.`);
           this.ownedByElectron = false;
           this.setStatus("ready", "Connected to existing IRIS backend");
           return true;
         } else {
-          console.warn("[ELECTRON] Found STALE backend on port 8000 (missing universal_v2.4.3 resolver). Terminating stale backend...");
+          console.warn("[ELECTRON] Found STALE backend on port 8000 (missing universal resolver). Terminating stale backend...");
           if (process.platform === "win32") {
             try {
               const { execSync } = require("child_process");

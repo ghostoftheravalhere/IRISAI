@@ -4,7 +4,13 @@ Run from the repo root:  python -m backend.main
   or from backend/:      python main.py
 """
 import sys
+import io
 import os
+
+if sys.stdout is None:
+    sys.stdout = io.StringIO()
+if sys.stderr is None:
+    sys.stderr = io.StringIO()
 
 if getattr(sys, "frozen", False):
     bundle_dir = getattr(sys, "_MEIPASS", os.path.dirname(__file__))

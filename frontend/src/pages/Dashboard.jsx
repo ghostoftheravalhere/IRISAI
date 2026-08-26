@@ -685,9 +685,9 @@ export default function Dashboard() {
             <div style={{ background: "#08090e", borderRadius: "8px", padding: "1rem", fontFamily: "monospace", fontSize: "0.85rem", color: "#d1d5db", lineHeight: "1.8", marginBottom: "1.5rem" }}>
               <div>Frontend: <span style={{ color: "#34d399" }}>ONLINE</span></div>
               <div>Backend: <span style={{ color: health?.status !== "OFFLINE" ? "#34d399" : "#f87171" }}>{health?.status || "HEALTHY"}</span></div>
-              <div>Backend Version: <span style={{ color: "#60a5fa" }}>{health?.version || "2.4.3"}</span></div>
+              <div>Backend Version: <span style={{ color: "#60a5fa" }}>{health?.version || "2.4.4"}</span></div>
               <div>Backend Executable: <span style={{ color: "#60a5fa" }}>{health?.executable ? health.executable.split(/[\/\\]/).pop() : "iris_backend.exe"}</span></div>
-              <div>App Resolver: <span style={{ color: "#34d399" }}>{health?.resolver || "universal_v2.4.3"}</span></div>
+              <div>App Resolver: <span style={{ color: "#34d399" }}>{health?.resolver || "universal_v2.4.4"}</span></div>
               <div>API Target: <span style={{ color: "#60a5fa" }}>http://127.0.0.1:8000</span></div>
               <div>WebSocket Target: <span style={{ color: "#60a5fa" }}>ws://127.0.0.1:8000/ws/events</span></div>
               <div>Microphone Input: <span style={{ color: "#34d399" }}>Ready ({micStatus})</span></div>
