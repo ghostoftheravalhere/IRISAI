@@ -420,6 +420,15 @@ export default function Dashboard() {
     setCalibCardPos(null);
     speakText("Starting camera capture...");
 
+    // Request fullscreen mode for 1:1 edge-to-edge physical screen calibration
+    if (window.irisAPI?.setFullScreen) {
+      try {
+        await window.irisAPI.setFullScreen(true);
+      } catch (e) {
+        console.warn("[CALIBRATION] Failed to set fullscreen:", e);
+      }
+    }
+
     // 1. Start camera capture session via backend shared CameraService
     const camRes = await IRISApiClient.startCamera();
     if (camRes && camRes.error) {
@@ -517,6 +526,13 @@ export default function Dashboard() {
   const handleCloseCalibration = () => {
     setIsCalibrating(false);
     setCalibStatus("IDLE");
+    if (window.irisAPI?.setFullScreen) {
+      try {
+        window.irisAPI.setFullScreen(false);
+      } catch (e) {
+        console.warn("[CALIBRATION] Failed to restore non-fullscreen:", e);
+      }
+    }
   };
 
   const handleSendTextCommand = async (cmdText) => {

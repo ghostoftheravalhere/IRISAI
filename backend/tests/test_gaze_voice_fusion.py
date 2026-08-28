@@ -227,18 +227,27 @@ def test_listener_callback_dispatch(mock_cursor_controller, mock_system_cursor):
         ("Right-Click", "RIGHT_CLICK"),
         ("RightClick", "RIGHT_CLICK"),
         ("do a right click", "RIGHT_CLICK"),
+        ("Right click!", "RIGHT_CLICK"),
+        ("right click.", "RIGHT_CLICK"),
         ("CLICK", "LEFT_CLICK"),
         ("Click", "LEFT_CLICK"),
+        ("click.", "LEFT_CLICK"),
         ("Left Click", "LEFT_CLICK"),
         ("Double click", "DOUBLE_CLICK"),
         ("DOUBLE CLICK", "DOUBLE_CLICK"),
         ("Double-Click", "DOUBLE_CLICK"),
+        ("Double click?", "DOUBLE_CLICK"),
+        ("open", "DOUBLE_CLICK"),
+        ("open.", "DOUBLE_CLICK"),
+        ("OPEN!", "DOUBLE_CLICK"),
         ("Drag", "MOUSE_DOWN"),
+        ("drag.", "MOUSE_DOWN"),
         ("Drop", "MOUSE_UP"),
+        ("drop!", "MOUSE_UP"),
     ],
 )
-def test_case_insensitive_voice_command_mapping(phrase, expected_action, mock_cursor_controller, mock_system_cursor):
-    """Verify voice command intent parsing is strictly case-insensitive."""
+def test_case_insensitive_and_punctuation_voice_command_mapping(phrase, expected_action, mock_cursor_controller, mock_system_cursor):
+    """Verify voice command intent parsing strips punctuation and is case-insensitive."""
     engine = GazeVoiceFusionEngine(
         cursor_controller=mock_cursor_controller,
         system_cursor_service=mock_system_cursor,
@@ -249,3 +258,24 @@ def test_case_insensitive_voice_command_mapping(phrase, expected_action, mock_cu
     assert resp is not None, f"Failed to match phrase: {phrase}"
     assert resp.action == expected_action
     assert resp.success is True
+
+
+def test_pipeline_executes_fusion_click_prioritized_with_punctuation(mock_cursor_controller, mock_system_cursor):
+    """Verify VoiceCommandPipeline executes gaze fusion action before conversational fallback."""
+    from backend.voice.pipeline import VoiceCommandPipeline
+    from backend.fusion.fusion_engine import gaze_voice_fusion
+
+    gaze_voice_fusion.set_cursor_controller(mock_cursor_controller)
+    gaze_voice_fusion._system_cursor = mock_system_cursor
+
+    pipeline = VoiceCommandPipeline(
+        intent_parser=MagicMock(),
+        action_engine=MagicMock(),
+        automation_dispatcher=MagicMock(),
+    )
+    with patch("backend.eye_tracking.click_feedback_overlay.show_click_feedback_popup"):
+        result = pipeline.execute("Right click!")
+
+    assert result.intent == "RIGHT_CLICK"
+    assert result.success is True
+    mock_system_cursor.click.assert_called_once_with(500, 300, button="right")

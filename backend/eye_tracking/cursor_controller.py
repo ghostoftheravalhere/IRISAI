@@ -283,18 +283,16 @@ class CursorController:
 
     def _move_toward_gaze(self, pyautogui: Any, gaze: GazeEstimate) -> CursorControllerState:
         """Smooth and clamp gaze into a cursor move, respecting the dead zone and EAR freeze gate."""
+        screen_width, screen_height = system_cursor.screen_size
         if system_cursor.enabled:
             current_x_i, current_y_i = system_cursor.get_cursor_position()
-            screen_width, screen_height = system_cursor.screen_size
         elif pyautogui is not None:
-            screen_width, screen_height = pyautogui.size()
             current_x, current_y = pyautogui.position()
             current_x_i = int(current_x)
             current_y_i = int(current_y)
         else:
             current_x_i = self._last_x or 0
             current_y_i = self._last_y or 0
-            screen_width, screen_height = 1920, 1080
 
         target_x, target_y = self._gaze_to_screen(
             gaze_x=gaze.x,

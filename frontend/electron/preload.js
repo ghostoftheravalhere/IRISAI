@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("irisAPI", {
   getBackendStatus: () => ipcRenderer.invoke("backend:get-status"),
   restartBackend: () => ipcRenderer.invoke("backend:restart"),
   quitApp: () => ipcRenderer.invoke("app:quit"),
+  setFullScreen: (flag) => ipcRenderer.invoke("window:set-fullscreen", flag),
+  maximize: () => ipcRenderer.invoke("window:maximize"),
   onBackendStatusChange: (callback) => {
     const listener = (event, statusState) => {
       if (typeof callback === "function") {

@@ -128,6 +128,22 @@ ipcMain.handle("app:quit", async () => {
   return { success: true };
 });
 
+ipcMain.handle("window:set-fullscreen", (event, flag) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setFullScreen(Boolean(flag));
+    return { success: true, isFullScreen: mainWindow.isFullScreen() };
+  }
+  return { success: false };
+});
+
+ipcMain.handle("window:maximize", () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.maximize();
+    return { success: true };
+  }
+  return { success: false };
+});
+
 backendManager.onStatusChange = (statusState) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("backend:status-changed", statusState);

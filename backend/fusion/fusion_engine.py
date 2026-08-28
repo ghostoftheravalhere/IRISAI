@@ -158,21 +158,21 @@ class GazeVoiceFusionEngine:
         """Parse voice utterance and dispatch gaze-anchored native Win32 action."""
         import re
 
-        raw = str(command_text or "").lower().strip()
-        text = re.sub(r"[^\w\s-]", " ", raw).strip()
-        if not text:
+        raw_text = str(command_text or "").strip()
+        clean_text = re.sub(r"[^\w\s]", "", raw_text).lower().strip()
+        if not clean_text:
             return None
 
-        # Priority 1: Multi-word specific clicks
-        if any(w in text for w in ("double click", "double-click", "doubleclick", "do a double click")):
+        # Priority 1: Multi-word specific clicks or 'open' gaze target
+        if clean_text == "open" or any(w in clean_text for w in ("double click", "double-click", "doubleclick", "do a double click", "open this", "open file", "open item", "open folder")):
             return self.execute_action("DOUBLE_CLICK", timestamp=timestamp)
-        if any(w in text for w in ("right click", "right-click", "rightclick", "do a right click", "context menu", "open menu", "menu")):
+        if any(w in clean_text for w in ("right click", "right-click", "rightclick", "do a right click", "context menu", "open menu", "menu")):
             return self.execute_action("RIGHT_CLICK", timestamp=timestamp)
-        if any(w in text for w in ("drag", "hold", "grab", "start selecting", "begin selection")):
+        if any(w in clean_text for w in ("drag", "hold", "grab", "start selecting", "begin selection")):
             return self.execute_action("MOUSE_DOWN", timestamp=timestamp)
-        if any(w in text for w in ("drop", "release", "let go", "stop selecting", "end selection")):
+        if any(w in clean_text for w in ("drop", "release", "let go", "stop selecting", "end selection")):
             return self.execute_action("MOUSE_UP", timestamp=timestamp)
-        if any(w in text for w in ("click", "select", "tap", "left click", "left-click", "single click", "press")) or text in ("click", "open"):
+        if any(w in clean_text for w in ("click", "select", "tap", "left click", "left-click", "single click", "press")) or clean_text == "click":
             return self.execute_action("LEFT_CLICK", timestamp=timestamp)
 
         return None

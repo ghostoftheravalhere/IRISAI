@@ -126,7 +126,31 @@ class VoiceCommandPipeline:
                     transcript=text,
                 )
 
-            normalized_text = self._normalizer.normalize(text)
+            import re
+            clean_text = re.sub(r"[^\w\s]", "", text).lower().strip()
+
+            # Priority 1: Check Gaze-Voice Fusion engine before conversational fallback
+            from backend.fusion.fusion_engine import gaze_voice_fusion
+            fusion_resp = gaze_voice_fusion.process_voice_command(clean_text)
+            if fusion_resp is not None:
+                logger.info("[FUSION] Direct gaze-voice action executed: %s (success=%s)", fusion_resp.action, fusion_resp.success)
+                if self._event_bus:
+                    self._event_bus.publish(
+                        AutomationExecutedEvent(
+                            intent=fusion_resp.action,
+                            action=fusion_resp.action,
+                            success=fusion_resp.success,
+                            execution_status=fusion_resp.message,
+                        )
+                    )
+                return VoicePipelineResult(
+                    intent=fusion_resp.action,
+                    message=fusion_resp.message,
+                    success=fusion_resp.success,
+                    transcript=text,
+                )
+
+            normalized_text = self._normalizer.normalize(clean_text)
             voice_intent = self._intent_parser.parse(normalized_text)
             logger.info(
                 "INTENT: Voice intent parsed: %s (target: %s, rule: %s)",
