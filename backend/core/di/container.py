@@ -350,6 +350,10 @@ def build_container(app_settings: Settings) -> AppContainer:
     )
     ConfigurationValidator.validate_settings(app_settings, event_bus=event_bus)
 
+    from backend.fusion.fusion_engine import gaze_voice_fusion
+    gaze_voice_fusion.set_cursor_controller(cursor_controller)
+    voice.set_on_speech_start(gaze_voice_fusion.handle_speech_start)
+
     return AppContainer(
         eye_interaction_config=eye_config,
         camera=camera,

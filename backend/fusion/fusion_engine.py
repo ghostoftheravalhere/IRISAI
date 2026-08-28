@@ -104,12 +104,16 @@ class GazeVoiceFusionEngine:
             if x is not None and y is not None:
                 anchor_x, anchor_y = int(x), int(y)
             elif self._cursor_controller is not None:
-                anchor_x, anchor_y = self._cursor_controller.get_current_position()
+                try:
+                    anchor_x, anchor_y = self._cursor_controller.get_current_position()
+                except Exception as e:
+                    logger.warning("[FUSION] Failed to query cursor_controller position: %s", e)
+                    anchor_x, anchor_y = self._system_cursor.get_cursor_position()
             else:
                 anchor_x, anchor_y = self._system_cursor.get_cursor_position()
 
             self._latest_anchor = GazeAnchor(x=anchor_x, y=anchor_y, timestamp=ts)
-            logger.debug(
+            logger.info(
                 "[FUSION] Gaze anchored at (%d, %d) at timestamp %.3f",
                 anchor_x,
                 anchor_y,
@@ -141,13 +145,18 @@ class GazeVoiceFusionEngine:
             if self._latest_anchor is not None and self._latest_anchor.is_valid(
                 self._max_drift_seconds, now=current_time
             ):
+                logger.info("[FUSION] Using valid gaze anchor at (%d, %d)", self._latest_anchor.x, self._latest_anchor.y)
                 return self._latest_anchor.x, self._latest_anchor.y, True
 
             # Fallback to current live cursor position
             if self._cursor_controller is not None:
-                live_x, live_y = self._cursor_controller.get_current_position()
+                try:
+                    live_x, live_y = self._cursor_controller.get_current_position()
+                except Exception:
+                    live_x, live_y = self._system_cursor.get_cursor_position()
             else:
                 live_x, live_y = self._system_cursor.get_cursor_position()
+            logger.info("[FUSION] Anchor expired or missing. Fallback to live position at (%d, %d)", live_x, live_y)
             return live_x, live_y, False
 
     def process_voice_command(

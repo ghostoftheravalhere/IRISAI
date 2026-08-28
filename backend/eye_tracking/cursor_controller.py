@@ -250,10 +250,29 @@ class CursorController:
             self._is_frozen_by_ear = False
 
     def get_current_position(self) -> tuple[int, int]:
-        """Return current tracked cursor coordinates or live OS position."""
+        """Return current tracked cursor coordinates, live gaze screen coordinates, or OS position."""
         with self._lock:
             if self._last_x is not None and self._last_y is not None:
                 return (self._last_x, self._last_y)
+            if self._smoothed_x is not None and self._smoothed_y is not None:
+                return (int(round(self._smoothed_x)), int(round(self._smoothed_y)))
+
+        # If cursor control is not actively overriding OS pointer, calculate from latest gaze estimate
+        try:
+            if self._gaze_service is not None:
+                latest_gaze = self._gaze_service.get_latest_gaze()
+                if latest_gaze is not None and getattr(latest_gaze, "confidence", 0.0) >= 0.0:
+                    screen_width, screen_height = system_cursor.screen_size
+                    target_x, target_y = self._gaze_to_screen(
+                        gaze_x=latest_gaze.x,
+                        gaze_y=latest_gaze.y,
+                        screen_width=int(screen_width),
+                        screen_height=int(screen_height),
+                    )
+                    return (target_x, target_y)
+        except Exception as exc:
+            logger.debug("Failed to calculate gaze position in get_current_position: %s", exc)
+
         return system_cursor.get_cursor_position()
 
     def get_state(self) -> CursorControllerState:

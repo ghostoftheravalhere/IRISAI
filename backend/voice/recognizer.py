@@ -386,36 +386,52 @@ class VoiceRecognitionService:
             needs_resampling = (actual_sr != self._config.sample_rate)
             actual_block_size = int(actual_sr * self._config.block_duration_seconds) if needs_resampling else block_size
 
-            # Attempt stream opening with fallback sample rates / device indices if required
-            try:
-                stream = sd.InputStream(
-                    device=target_device_idx,
-                    samplerate=actual_sr,
-                    channels=1,
-                    dtype="float32",
-                    blocksize=actual_block_size,
-                )
-                stream.start()
-            except Exception as stream_err:
-                logger.warning("[MIC] Primary stream opening failed on device #%s (%s): %s", target_device_idx, dev_name, stream_err)
-                # Fallback: Try device=None (system default) at 16000 Hz or native rate
+            # Attempt stream opening with non-blocking retry wrapper and device fallback
+            last_err = None
+            for attempt in range(3):
                 try:
-                    actual_sr = 16000
-                    actual_block_size = block_size
-                    needs_resampling = False
                     stream = sd.InputStream(
-                        device=None,
-                        samplerate=16000,
+                        device=target_device_idx,
+                        samplerate=actual_sr,
                         channels=1,
                         dtype="float32",
-                        blocksize=block_size,
+                        blocksize=actual_block_size,
                     )
                     stream.start()
-                    target_device_idx = sd.default.device[0]
-                    dev_name = "Default System Input"
-                except Exception as fallback_err:
-                    logger.exception("[MIC] All microphone InputStream creation attempts failed! %s", fallback_err)
-                    raise fallback_err
+                    break
+                except Exception as stream_err:
+                    last_err = stream_err
+                    logger.warning("[MIC] Attempt %d: stream opening failed on device #%s (%s): %s", attempt + 1, target_device_idx, dev_name, stream_err)
+                    import time
+                    time.sleep(0.15)
+
+            if stream is None:
+                # Fallback: Try device=None (system default) at 16000 Hz or native rate with retries
+                for attempt in range(3):
+                    try:
+                        actual_sr = 16000
+                        actual_block_size = block_size
+                        needs_resampling = False
+                        stream = sd.InputStream(
+                            device=None,
+                            samplerate=16000,
+                            channels=1,
+                            dtype="float32",
+                            blocksize=block_size,
+                        )
+                        stream.start()
+                        target_device_idx = sd.default.device[0]
+                        dev_name = "Default System Input"
+                        break
+                    except Exception as fallback_err:
+                        last_err = fallback_err
+                        logger.warning("[MIC] Fallback attempt %d failed: %s", attempt + 1, fallback_err)
+                        import time
+                        time.sleep(0.15)
+
+            if stream is None:
+                logger.exception("[MIC] All microphone InputStream creation attempts failed! %s", last_err)
+                raise last_err
 
             logger.info(
                 "[MIC] Microphone initialized successfully (Device: '%s' [#%s], SR: %d Hz, Resample: %s)",
