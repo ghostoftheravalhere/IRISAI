@@ -146,10 +146,11 @@ class SystemCursor:
         x: float | int | None = None,
         y: float | int | None = None,
         button: str = "left",
+        force: bool = False,
     ) -> bool:
-        """Execute a native mouse click at current or specified coordinates if enabled."""
+        """Execute a native mouse click at current or specified coordinates."""
         with self._lock:
-            if not self._enabled:
+            if not self._enabled and not force:
                 return False
 
         btn = (button or "left").lower().strip()
@@ -186,10 +187,11 @@ class SystemCursor:
         x: float | int | None = None,
         y: float | int | None = None,
         button: str = "left",
+        force: bool = False,
     ) -> bool:
-        """Execute a native double click at current or specified coordinates if enabled."""
+        """Execute a native double click at current or specified coordinates."""
         with self._lock:
-            if not self._enabled:
+            if not self._enabled and not force:
                 return False
 
         btn = (button or "left").lower().strip()
@@ -234,10 +236,11 @@ class SystemCursor:
         x: float | int | None = None,
         y: float | int | None = None,
         button: str = "left",
+        force: bool = False,
     ) -> bool:
-        """Press and hold mouse button down at current or specified coordinates if enabled."""
+        """Press and hold mouse button down at current or specified coordinates."""
         with self._lock:
-            if not self._enabled:
+            if not self._enabled and not force:
                 return False
 
         btn = (button or "left").lower().strip()
@@ -270,10 +273,11 @@ class SystemCursor:
         x: float | int | None = None,
         y: float | int | None = None,
         button: str = "left",
+        force: bool = False,
     ) -> bool:
-        """Release mouse button at current or specified coordinates if enabled."""
+        """Release mouse button at current or specified coordinates."""
         with self._lock:
-            if not self._enabled:
+            if not self._enabled and not force:
                 return False
 
         btn = (button or "left").lower().strip()

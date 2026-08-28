@@ -382,56 +382,62 @@ class VoiceRecognitionService:
             logger.info("[MIC] Sample rate = %d Hz (Target: %d Hz)", actual_sr, self._config.sample_rate)
             logger.info("[MIC] Backend = sounddevice (PortAudio)")
 
+            import time
             stream = None
             needs_resampling = (actual_sr != self._config.sample_rate)
             actual_block_size = int(actual_sr * self._config.block_duration_seconds) if needs_resampling else block_size
 
-            # Attempt stream opening with non-blocking retry wrapper and device fallback
-            last_err = None
-            for attempt in range(3):
+            # Pre-warm & settling delay (500ms) to allow OS/PortAudio hardware handles to stabilize
+            time.sleep(0.5)
+
+            # Step 1: Attempt primary selected device
+            try:
+                stream = sd.InputStream(
+                    device=target_device_idx,
+                    samplerate=actual_sr,
+                    channels=1,
+                    dtype="float32",
+                    blocksize=actual_block_size,
+                )
+                stream.start()
+            except (getattr(sd, "PortAudioError", Exception), Exception) as stream_err:
+                logger.warning(
+                    "[MIC] Primary stream opening failed on device #%s (%s): %s. Resetting and falling back to system default...",
+                    target_device_idx,
+                    dev_name,
+                    stream_err,
+                )
+                time.sleep(0.5)
+                # Step 2: Fallback to system default input (device=None) at 16000 Hz or native rate
                 try:
+                    actual_sr = 16000
+                    actual_block_size = block_size
+                    needs_resampling = False
                     stream = sd.InputStream(
-                        device=target_device_idx,
-                        samplerate=actual_sr,
+                        device=None,
+                        samplerate=16000,
                         channels=1,
                         dtype="float32",
-                        blocksize=actual_block_size,
+                        blocksize=block_size,
                     )
                     stream.start()
-                    break
-                except Exception as stream_err:
-                    last_err = stream_err
-                    logger.warning("[MIC] Attempt %d: stream opening failed on device #%s (%s): %s", attempt + 1, target_device_idx, dev_name, stream_err)
-                    import time
-                    time.sleep(0.15)
-
-            if stream is None:
-                # Fallback: Try device=None (system default) at 16000 Hz or native rate with retries
-                for attempt in range(3):
+                    target_device_idx = sd.default.device[0] if hasattr(sd, "default") and getattr(sd.default, "device", None) else None
+                    dev_name = "Default System Input"
+                except Exception as fallback_err:
+                    logger.warning("[MIC] Fallback at 16kHz failed (%s). Attempting native default rate...", fallback_err)
+                    time.sleep(0.5)
                     try:
-                        actual_sr = 16000
-                        actual_block_size = block_size
-                        needs_resampling = False
                         stream = sd.InputStream(
                             device=None,
-                            samplerate=16000,
                             channels=1,
                             dtype="float32",
                             blocksize=block_size,
                         )
                         stream.start()
-                        target_device_idx = sd.default.device[0]
-                        dev_name = "Default System Input"
-                        break
-                    except Exception as fallback_err:
-                        last_err = fallback_err
-                        logger.warning("[MIC] Fallback attempt %d failed: %s", attempt + 1, fallback_err)
-                        import time
-                        time.sleep(0.15)
-
-            if stream is None:
-                logger.exception("[MIC] All microphone InputStream creation attempts failed! %s", last_err)
-                raise last_err
+                        dev_name = "Default System Input (Native Rate)"
+                    except Exception as final_err:
+                        logger.exception("[MIC] All microphone InputStream creation attempts failed! %s", final_err)
+                        raise final_err
 
             logger.info(
                 "[MIC] Microphone initialized successfully (Device: '%s' [#%s], SR: %d Hz, Resample: %s)",

@@ -92,7 +92,7 @@ def test_intent_mapping_click_action(mock_cursor_controller, mock_system_cursor)
     assert resp.target_x == 640
     assert resp.target_y == 480
     assert resp.used_anchor is True
-    mock_system_cursor.click.assert_called_once_with(640, 480, button="left")
+    mock_system_cursor.click.assert_called_once_with(640, 480, button="left", force=True)
 
 
 def test_intent_mapping_double_click_action(mock_cursor_controller, mock_system_cursor):
@@ -115,7 +115,7 @@ def test_intent_mapping_double_click_action(mock_cursor_controller, mock_system_
     assert resp.target_x == 320
     assert resp.target_y == 240
     assert resp.used_anchor is True
-    mock_system_cursor.double_click.assert_called_once_with(320, 240, button="left")
+    mock_system_cursor.double_click.assert_called_once_with(320, 240, button="left", force=True)
 
 
 def test_intent_mapping_right_click_action(mock_cursor_controller, mock_system_cursor):
@@ -138,7 +138,7 @@ def test_intent_mapping_right_click_action(mock_cursor_controller, mock_system_c
     assert resp.target_x == 400
     assert resp.target_y == 400
     assert resp.used_anchor is True
-    mock_system_cursor.click.assert_called_once_with(400, 400, button="right")
+    mock_system_cursor.click.assert_called_once_with(400, 400, button="right", force=True)
 
 
 def test_intent_mapping_drag_and_drop_actions(mock_cursor_controller, mock_system_cursor):
@@ -157,7 +157,7 @@ def test_intent_mapping_drag_and_drop_actions(mock_cursor_controller, mock_syste
         assert resp_drag.action == "MOUSE_DOWN"
         assert resp_drag.target_x == 100
         assert resp_drag.target_y == 100
-        mock_system_cursor.mouse_down.assert_called_once_with(100, 100, button="left")
+        mock_system_cursor.mouse_down.assert_called_once_with(100, 100, button="left", force=True)
 
         # Now drop at a new location
         engine.anchor_gaze(x=700, y=700, timestamp=t0 + 1.0)
@@ -165,7 +165,7 @@ def test_intent_mapping_drag_and_drop_actions(mock_cursor_controller, mock_syste
         assert resp_drop.action == "MOUSE_UP"
         assert resp_drop.target_x == 700
         assert resp_drop.target_y == 700
-        mock_system_cursor.mouse_up.assert_called_once_with(700, 700, button="left")
+        mock_system_cursor.mouse_up.assert_called_once_with(700, 700, button="left", force=True)
 
 
 def test_stale_anchor_fallback_to_live_coordinates(mock_cursor_controller, mock_system_cursor):
@@ -190,7 +190,7 @@ def test_stale_anchor_fallback_to_live_coordinates(mock_cursor_controller, mock_
     assert resp.target_x == 500
     assert resp.target_y == 300
     assert resp.used_anchor is False
-    mock_system_cursor.click.assert_called_once_with(500, 300, button="left")
+    mock_system_cursor.click.assert_called_once_with(500, 300, button="left", force=True)
 
 
 def test_listener_callback_dispatch(mock_cursor_controller, mock_system_cursor):
@@ -278,4 +278,25 @@ def test_pipeline_executes_fusion_click_prioritized_with_punctuation(mock_cursor
 
     assert result.intent == "RIGHT_CLICK"
     assert result.success is True
-    mock_system_cursor.click.assert_called_once_with(500, 300, button="right")
+    mock_system_cursor.click.assert_called_once_with(500, 300, button="right", force=True)
+
+
+def test_voice_command_executes_without_gaze_fallback(mock_system_cursor):
+    """Verify voice command executes at live cursor position even when cursor_controller is None or inactive."""
+    engine = GazeVoiceFusionEngine(
+        cursor_controller=None,
+        system_cursor_service=mock_system_cursor,
+    )
+    mock_system_cursor.get_cursor_position.return_value = (850, 420)
+
+    with patch("backend.eye_tracking.click_feedback_overlay.show_click_feedback_popup"):
+        resp = engine.process_voice_command("click")
+
+    assert resp is not None
+    assert resp.action == "LEFT_CLICK"
+    assert resp.target_x == 850
+    assert resp.target_y == 420
+    assert resp.used_anchor is False
+    assert resp.success is True
+    mock_system_cursor.click.assert_called_once_with(850, 420, button="left", force=True)
+

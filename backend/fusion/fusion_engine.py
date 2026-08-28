@@ -148,15 +148,16 @@ class GazeVoiceFusionEngine:
                 logger.info("[FUSION] Using valid gaze anchor at (%d, %d)", self._latest_anchor.x, self._latest_anchor.y)
                 return self._latest_anchor.x, self._latest_anchor.y, True
 
-            # Fallback to current live cursor position
-            if self._cursor_controller is not None:
-                try:
+            # Fallback to current live cursor position (works universally whether gaze control is ON or OFF)
+            try:
+                if self._cursor_controller is not None:
                     live_x, live_y = self._cursor_controller.get_current_position()
-                except Exception:
+                else:
                     live_x, live_y = self._system_cursor.get_cursor_position()
-            else:
+            except Exception as exc:
+                logger.debug("[FUSION] Failed getting cursor_controller position (%s); using system_cursor: %s", exc)
                 live_x, live_y = self._system_cursor.get_cursor_position()
-            logger.info("[FUSION] Anchor expired or missing. Fallback to live position at (%d, %d)", live_x, live_y)
+            logger.info("[FUSION] Anchor expired or missing. Fallback to live cursor position at (%d, %d)", live_x, live_y)
             return live_x, live_y, False
 
     def process_voice_command(
@@ -198,37 +199,37 @@ class GazeVoiceFusionEngine:
         success = False
         action_name = action.upper().strip()
 
-        # Execute native Win32 action via system_cursor
+        # Execute native Win32 action via system_cursor (force=True so voice commands work whether gaze control is ON or OFF)
         if action_name == "LEFT_CLICK":
-            success = self._system_cursor.click(target_x, target_y, button="left")
+            success = self._system_cursor.click(target_x, target_y, button="left", force=True)
             try:
                 from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
                 show_click_feedback_popup(text="Voice Click", duration_ms=900, x=target_x, y=target_y)
             except Exception:
                 pass
         elif action_name == "DOUBLE_CLICK":
-            success = self._system_cursor.double_click(target_x, target_y, button="left")
+            success = self._system_cursor.double_click(target_x, target_y, button="left", force=True)
             try:
                 from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
                 show_click_feedback_popup(text="Voice Double Click", duration_ms=900, x=target_x, y=target_y)
             except Exception:
                 pass
         elif action_name == "RIGHT_CLICK":
-            success = self._system_cursor.click(target_x, target_y, button="right")
+            success = self._system_cursor.click(target_x, target_y, button="right", force=True)
             try:
                 from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
                 show_click_feedback_popup(text="Voice Right Click", duration_ms=900, x=target_x, y=target_y)
             except Exception:
                 pass
         elif action_name == "MOUSE_DOWN":
-            success = self._system_cursor.mouse_down(target_x, target_y, button="left")
+            success = self._system_cursor.mouse_down(target_x, target_y, button="left", force=True)
             try:
                 from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
                 show_click_feedback_popup(text="Voice Drag Start", duration_ms=900, x=target_x, y=target_y)
             except Exception:
                 pass
         elif action_name == "MOUSE_UP":
-            success = self._system_cursor.mouse_up(target_x, target_y, button="left")
+            success = self._system_cursor.mouse_up(target_x, target_y, button="left", force=True)
             try:
                 from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
                 show_click_feedback_popup(text="Voice Drop", duration_ms=900, x=target_x, y=target_y)
