@@ -13,6 +13,7 @@ from backend.eye_tracking.eye_interaction_config import (
     default_eye_interaction_config,
 )
 from backend.eye_tracking.gaze_service import EyeGazeService, GazeEstimate
+from backend.vision.kalman_filter import GazeKalmanFilter
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -89,7 +90,18 @@ class CursorController:
         self._smoothed_y: float | None = None
         self._last_action_timestamp: float | None = None
         self._last_executed_action_timestamp: float | None = None
+        self._kalman_filter = GazeKalmanFilter()
         self._lock = RLock()
+
+    @property
+    def kalman_filter(self) -> GazeKalmanFilter:
+        """Return the internal 2D Kalman filter instance."""
+        return self._kalman_filter
+
+    def set_kalman_parameters(self, **kwargs) -> None:
+        """Dynamically tune 2D Kalman filter parameters."""
+        with self._lock:
+            self._kalman_filter.set_parameters(**kwargs)
 
     def enable(self) -> CursorControllerState:
         """Enable cursor movement if PyAutoGUI is available."""
@@ -367,21 +379,30 @@ class CursorController:
         current_x: int,
         current_y: int,
     ) -> tuple[int, int]:
-        """Smooth cursor targets without jumping on first tracked frame."""
+        """Smooth cursor targets using 2D Kalman filter & adaptive anti-jitter pipeline."""
         with self._lock:
-            if self._smoothed_x is None or self._smoothed_y is None:
-                self._smoothed_x = float(current_x)
-                self._smoothed_y = float(current_y)
+            if not self._kalman_filter.is_initialized:
+                self._kalman_filter.update(float(current_x), float(current_y))
 
             if self._recovery_frames_remaining > 0:
                 # Re-seed from the live OS cursor so recovery never teleports.
+                self._kalman_filter.reset()
+                self._kalman_filter.update(float(current_x), float(current_y))
                 self._smoothed_x = float(current_x)
                 self._smoothed_y = float(current_y)
                 self._recovery_frames_remaining -= 1
 
+            # 1. Kalman 2D state update with adaptive velocity-dependent noise scaling
+            kx, ky = self._kalman_filter.update(float(target_x), float(target_y))
+
+            if self._smoothed_x is None or self._smoothed_y is None:
+                self._smoothed_x = float(kx)
+                self._smoothed_y = float(ky)
+
+            # 2. Configurable smoothing alpha blending
             alpha = self._config.smoothing_alpha
-            self._smoothed_x = alpha * target_x + (1.0 - alpha) * self._smoothed_x
-            self._smoothed_y = alpha * target_y + (1.0 - alpha) * self._smoothed_y
+            self._smoothed_x = alpha * kx + (1.0 - alpha) * self._smoothed_x
+            self._smoothed_y = alpha * ky + (1.0 - alpha) * self._smoothed_y
 
             return int(round(self._smoothed_x)), int(round(self._smoothed_y))
 
@@ -412,6 +433,8 @@ class CursorController:
         self._last_y = None
         self._smoothed_x = None
         self._smoothed_y = None
+        if hasattr(self, "_kalman_filter") and self._kalman_filter is not None:
+            self._kalman_filter.reset()
 
     def _release_drag_if_needed(self) -> None:
         """Release drag state when cursor movement is stopped."""
