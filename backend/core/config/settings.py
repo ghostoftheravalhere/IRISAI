@@ -12,7 +12,7 @@ class Settings(BaseSettings):
 
     # App
     APP_ENV: str = "development"
-    APP_VERSION: str = "2.4.4"
+    APP_VERSION: str = "2.4.5"
     DEBUG: bool = True
 
     # Database

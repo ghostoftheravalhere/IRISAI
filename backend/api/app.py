@@ -139,7 +139,7 @@ def create_app() -> FastAPI:
             "version": settings.APP_VERSION,
             "executable": sys.executable,
             "is_frozen": getattr(sys, "frozen", False),
-            "resolver": "universal_v2.4.4",
+            "resolver": "universal_v2.4.5",
         }
         if hasattr(app.state, "diagnostics_service"):
             try:
