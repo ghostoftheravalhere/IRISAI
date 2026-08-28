@@ -58,44 +58,53 @@ class BackendManager {
    * Resolve backend executable path dynamically for dev vs production packaged mode.
    */
   /**
-   * Robust scanner for iris_backend.exe across all extraction/installation layouts.
+   * Robust scanner for backend.exe or iris_backend.exe across all extraction/installation layouts.
    */
   getBackendPath() {
     const isWin = process.platform === "win32";
-    const execName = isWin ? "iris_backend.exe" : "iris_backend";
+    const execNames = isWin ? ["backend.exe", "iris_backend.exe"] : ["backend", "iris_backend"];
 
-    // Array of every possible extraction path for NSIS and Portable Electron builds
-    const possiblePaths = [
-      path.join(process.resourcesPath, "iris_backend", execName),
-      path.join(process.resourcesPath, "backend", execName),
-      path.join(app && app.getAppPath ? app.getAppPath() : "", "..", "iris_backend", execName),
-      path.join(app && app.getAppPath ? app.getAppPath() : "", "..", "backend", execName),
-      path.join(path.dirname(app && app.getPath ? app.getPath("exe") : process.execPath), "resources", "iris_backend", execName),
-      path.join(path.dirname(app && app.getPath ? app.getPath("exe") : process.execPath), "resources", "backend", execName),
-      path.join(app && app.getPath ? app.getPath("userData") : "", "backend", execName),
-      path.join(__dirname, "../../dist/iris_backend", execName),
-      path.resolve(__dirname, "../../dist/iris_backend", execName),
-    ];
+    for (const execName of execNames) {
+      const possiblePaths = [
+        path.join(process.resourcesPath, "backend", execName),
+        path.join(process.resourcesPath, "iris_backend", execName),
+        path.join(process.resourcesPath, execName),
+        path.join(app && app.getAppPath ? app.getAppPath() : "", "..", "backend", execName),
+        path.join(app && app.getAppPath ? app.getAppPath() : "", "..", "iris_backend", execName),
+        path.join(path.dirname(app && app.getPath ? app.getPath("exe") : process.execPath), "resources", "backend", execName),
+        path.join(path.dirname(app && app.getPath ? app.getPath("exe") : process.execPath), "resources", "iris_backend", execName),
+        path.join(app && app.getPath ? app.getPath("userData") : "", "backend", execName),
+        path.join(__dirname, "../../dist/backend", execName),
+        path.join(__dirname, "../../dist/iris_backend", execName),
+        path.resolve(__dirname, "../../dist/backend", execName),
+        path.resolve(__dirname, "../../dist/iris_backend", execName),
+      ];
 
-    for (const p of possiblePaths) {
-      if (p && fs.existsSync(p)) {
-        console.log("[ELECTRON] Backend found at:", p);
-        return p;
+      for (const p of possiblePaths) {
+        if (p && fs.existsSync(p)) {
+          console.log("[ELECTRON] Compiled backend binary found at:", p);
+          return p;
+        }
       }
     }
 
-    console.error("[ELECTRON] CRITICAL: iris_backend.exe could not be found in any standard directory.");
     return null;
   }
 
   /**
-   * Resolve backend executable path (packaged virtualenv/binary or dev python interpreter).
+   * Resolve backend executable path (compiled standalone binary or dev python interpreter).
    */
   getBackendExecutable() {
     const isWin = process.platform === "win32";
 
+    // 1. Packaged standalone binary (preferred for production)
+    const binaryPath = this.getBackendPath();
+    if (binaryPath) {
+      return binaryPath;
+    }
+
     if (this.isPackaged()) {
-      // 1. Packaged virtual environment python.exe in extraResources
+      // 2. Packaged virtual environment python.exe in extraResources (fallback)
       const packagedPython = isWin
         ? path.join(process.resourcesPath, "backend", ".venv", "Scripts", "python.exe")
         : path.join(process.resourcesPath, "backend", ".venv", "bin", "python");
@@ -105,7 +114,7 @@ class BackendManager {
         return packagedPython;
       }
 
-      // 2. Alternative resources path for portable or unpacked layouts
+      // 3. Alternative resources path for portable or unpacked layouts
       const altPython = isWin
         ? path.join(path.dirname(process.execPath), "resources", "backend", ".venv", "Scripts", "python.exe")
         : path.join(path.dirname(process.execPath), "resources", "backend", ".venv", "bin", "python");
@@ -113,12 +122,6 @@ class BackendManager {
       if (fs.existsSync(altPython)) {
         console.log("[ELECTRON] Packaged Python interpreter found at alt path:", altPython);
         return altPython;
-      }
-
-      // 3. Packaged standalone binary (if present)
-      const binaryPath = this.getBackendPath();
-      if (binaryPath) {
-        return binaryPath;
       }
     }
 

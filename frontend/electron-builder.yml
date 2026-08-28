@@ -7,13 +7,14 @@ files:
   - electron/**/*
   - package.json
 extraResources:
-  - from: ../backend
+  - from: ../dist/backend
     to: backend
     filter:
       - "**/*"
-      - "!.pytest_cache/**/*"
-      - "!**/__pycache__/**/*"
-      - "!**/*.pyc"
+  - from: ../resources
+    to: resources
+    filter:
+      - "**/*"
 win:
   target:
     - target: nsis
