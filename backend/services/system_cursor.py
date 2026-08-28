@@ -92,6 +92,20 @@ class SystemCursor:
         """Return current (width, height) screen dimensions."""
         return get_screen_dimensions()
 
+    def get_cursor_position(self) -> tuple[int, int]:
+        """Return actual OS cursor position via native Win32 GetCursorPos."""
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                from ctypes import wintypes
+
+                pt = wintypes.POINT()
+                if ctypes.windll.user32.GetCursorPos(ctypes.byref(pt)):
+                    return int(pt.x), int(pt.y)
+            except Exception:
+                pass
+        return (0, 0)
+
     def clamp_coordinates(self, x: float | int, y: float | int) -> tuple[int, int]:
         """Clamp coordinates strictly within valid screen bounds [0, width - 1], [0, height - 1]."""
         width, height = self.screen_size

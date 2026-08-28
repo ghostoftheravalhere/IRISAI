@@ -31,7 +31,7 @@ class CursorControllerConfig:
     edge_padding_px: int = 8
     move_duration_seconds: float = 0.0
     tracking_confidence_threshold: float = 0.45
-    max_step_px: float = 48.0
+    max_step_px: float = 1200.0
     recovery_frames: int = 6
 
 
@@ -217,16 +217,25 @@ class CursorController:
 
     def _move_toward_gaze(self, pyautogui: Any, gaze: GazeEstimate) -> CursorControllerState:
         """Smooth and clamp gaze into a cursor move, respecting the dead zone."""
-        screen_width, screen_height = pyautogui.size()
+        if system_cursor.enabled:
+            current_x_i, current_y_i = system_cursor.get_cursor_position()
+            screen_width, screen_height = system_cursor.screen_size
+        elif pyautogui is not None:
+            screen_width, screen_height = pyautogui.size()
+            current_x, current_y = pyautogui.position()
+            current_x_i = int(current_x)
+            current_y_i = int(current_y)
+        else:
+            current_x_i = self._last_x or 0
+            current_y_i = self._last_y or 0
+            screen_width, screen_height = 1920, 1080
+
         target_x, target_y = self._gaze_to_screen(
             gaze_x=gaze.x,
             gaze_y=gaze.y,
             screen_width=int(screen_width),
             screen_height=int(screen_height),
         )
-        current_x, current_y = pyautogui.position()
-        current_x_i = int(current_x)
-        current_y_i = int(current_y)
 
         # Hold EMA while the raw target is still inside the dead zone so noise
         # cannot accumulate into a sudden jump later.
@@ -410,14 +419,19 @@ class CursorController:
         """Smooth cursor targets using 2D Kalman filter & adaptive anti-jitter pipeline."""
         with self._lock:
             if not self._kalman_filter.is_initialized:
-                self._kalman_filter.update(float(current_x), float(current_y))
+                self._kalman_filter.update(float(target_x), float(target_y))
+                self._smoothed_x = float(target_x)
+                self._smoothed_y = float(target_y)
+                return target_x, target_y
 
             if self._recovery_frames_remaining > 0:
                 # Re-seed from the live OS cursor so recovery never teleports.
+                seed_x = float(self._last_x if self._last_x is not None else current_x)
+                seed_y = float(self._last_y if self._last_y is not None else current_y)
                 self._kalman_filter.reset()
-                self._kalman_filter.update(float(current_x), float(current_y))
-                self._smoothed_x = float(current_x)
-                self._smoothed_y = float(current_y)
+                self._kalman_filter.update(seed_x, seed_y)
+                self._smoothed_x = seed_x
+                self._smoothed_y = seed_y
                 self._recovery_frames_remaining -= 1
 
             # 1. Kalman 2D state update with adaptive velocity-dependent noise scaling
@@ -442,17 +456,19 @@ class CursorController:
         current_y: int,
     ) -> tuple[int, int]:
         """Clamp per-frame cursor travel to prevent sudden jumps."""
+        ref_x = self._last_x if self._last_x is not None else current_x
+        ref_y = self._last_y if self._last_y is not None else current_y
         max_step = self._config.max_step_px
-        dx = next_x - current_x
-        dy = next_y - current_y
+        dx = next_x - ref_x
+        dy = next_y - ref_y
         distance = hypot(dx, dy)
         if distance <= max_step or distance <= 0.0:
             return next_x, next_y
 
         scale = max_step / distance
         return (
-            int(round(current_x + dx * scale)),
-            int(round(current_y + dy * scale)),
+            int(round(ref_x + dx * scale)),
+            int(round(ref_y + dy * scale)),
         )
 
     def _clear_motion_state(self) -> None:
