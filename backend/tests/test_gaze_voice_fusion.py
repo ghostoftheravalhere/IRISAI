@@ -217,3 +217,35 @@ def test_listener_callback_dispatch(mock_cursor_controller, mock_system_cursor):
         engine.execute_action("RIGHT_CLICK")
 
     assert len(received) == 1
+
+
+@pytest.mark.parametrize(
+    "phrase,expected_action",
+    [
+        ("Right click", "RIGHT_CLICK"),
+        ("RIGHT CLICK", "RIGHT_CLICK"),
+        ("Right-Click", "RIGHT_CLICK"),
+        ("RightClick", "RIGHT_CLICK"),
+        ("do a right click", "RIGHT_CLICK"),
+        ("CLICK", "LEFT_CLICK"),
+        ("Click", "LEFT_CLICK"),
+        ("Left Click", "LEFT_CLICK"),
+        ("Double click", "DOUBLE_CLICK"),
+        ("DOUBLE CLICK", "DOUBLE_CLICK"),
+        ("Double-Click", "DOUBLE_CLICK"),
+        ("Drag", "MOUSE_DOWN"),
+        ("Drop", "MOUSE_UP"),
+    ],
+)
+def test_case_insensitive_voice_command_mapping(phrase, expected_action, mock_cursor_controller, mock_system_cursor):
+    """Verify voice command intent parsing is strictly case-insensitive."""
+    engine = GazeVoiceFusionEngine(
+        cursor_controller=mock_cursor_controller,
+        system_cursor_service=mock_system_cursor,
+    )
+    with patch("backend.eye_tracking.click_feedback_overlay.show_click_feedback_popup"):
+        resp = engine.process_voice_command(phrase)
+
+    assert resp is not None, f"Failed to match phrase: {phrase}"
+    assert resp.action == expected_action
+    assert resp.success is True

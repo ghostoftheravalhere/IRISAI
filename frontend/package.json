@@ -4,9 +4,10 @@
   "description": "IRIS AI — Intelligent Responsive Interface System",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev": "concurrently -k \"npm:dev:backend\" \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev:backend": "powershell -Command \"Set-Location ..; $env:PYTHONPATH='.'; & backend\\.venv\\Scripts\\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000\"",
     "dev:vite": "vite",
-    "dev:electron": "wait-on tcp:5173 && electron .",
+    "dev:electron": "wait-on tcp:5173 tcp:8000 && electron .",
     "build": "vite build",
     "build:backend": "powershell -Command \"Set-Location ..; & backend\\.venv\\Scripts\\python.exe -m PyInstaller --clean -y iris_backend.spec\"",
     "package:dir": "vite build && npx electron-builder --win dir",

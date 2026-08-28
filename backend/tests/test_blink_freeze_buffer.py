@@ -95,31 +95,33 @@ def test_history_buffer_rolling_update():
 
 
 def test_ear_freeze_gate_blocks_movement_during_blink():
-    """When EAR falls below threshold, cursor movement should freeze."""
+    """When EAR falls below threshold, cursor movement should freeze and buffer stops updating."""
     gaze_svc = FakeGazeService(0.5, 0.5)
     config = CursorControllerConfig(
         history_buffer_maxlen=10,
-        ear_freeze_threshold=0.28,
+        ear_freeze_threshold=0.31,
     )
     ctrl = CursorController(gaze_service=gaze_svc, config=config)
     ctrl._load_pyautogui = lambda: MagicMock(size=lambda: (1920, 1080), position=lambda: (960, 540), moveTo=lambda *a, **k: None)
     ctrl.enable()
 
     # 1. Move to stable position (960, 540)
-    ctrl.update(blink_state=_make_blink_state(smoothed_ear=0.35))
+    ctrl.update(blink_state=_make_blink_state(smoothed_ear=0.36))
     initial_last_x = ctrl._last_x
     initial_last_y = ctrl._last_y
+    initial_buffer_len = len(ctrl.history_buffer)
 
-    # 2. Simulate eyelid closing (EAR drops to 0.20 and gaze dips downward to Y=0.85)
+    # 2. Simulate eyelid closing (EAR drops to 0.30 - below 0.31 - and gaze dips downward to Y=0.85)
     gaze_svc.set_gaze(0.5, 0.85)
     with patch.object(system_cursor, "move_cursor") as mock_move:
-        ctrl.update(blink_state=_make_blink_state(smoothed_ear=0.20, hold_active=True))
+        ctrl.update(blink_state=_make_blink_state(smoothed_ear=0.30, hold_active=True))
         # Move cursor should not be called while frozen
         mock_move.assert_not_called()
 
-    # Cursor position should remain at the pre-blink position
+    # Cursor position should remain at the pre-blink position and buffer must not append dipping points
     assert ctrl._last_x == initial_last_x
     assert ctrl._last_y == initial_last_y
+    assert len(ctrl.history_buffer) == initial_buffer_len
 
 
 def test_retro_click_pulls_pre_blink_coordinates():
@@ -127,7 +129,7 @@ def test_retro_click_pulls_pre_blink_coordinates():
     gaze_svc = FakeGazeService(0.40, 0.40)
     config = CursorControllerConfig(
         history_buffer_maxlen=10,
-        ear_freeze_threshold=0.28,
+        ear_freeze_threshold=0.31,
     )
     ctrl = CursorController(gaze_service=gaze_svc, config=config)
     ctrl._load_pyautogui = lambda: MagicMock(size=lambda: (1920, 1080), position=lambda: (960, 540), moveTo=lambda *a, **k: None)
@@ -164,7 +166,7 @@ def test_freeze_resumes_when_ear_opens():
     gaze_svc = FakeGazeService(0.5, 0.5)
     config = CursorControllerConfig(
         history_buffer_maxlen=10,
-        ear_freeze_threshold=0.28,
+        ear_freeze_threshold=0.31,
     )
     ctrl = CursorController(gaze_service=gaze_svc, config=config)
     ctrl._load_pyautogui = lambda: MagicMock(size=lambda: (1920, 1080), position=lambda: (960, 540), moveTo=lambda *a, **k: None)

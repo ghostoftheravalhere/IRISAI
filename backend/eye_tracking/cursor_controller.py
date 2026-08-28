@@ -35,7 +35,7 @@ class CursorControllerConfig:
     max_step_px: float = 1200.0
     recovery_frames: int = 6
     history_buffer_maxlen: int = 10
-    ear_freeze_threshold: float = 0.28
+    ear_freeze_threshold: float = 0.31
 
 
 @dataclass(frozen=True)
@@ -79,7 +79,7 @@ class CursorController:
             max_step_px=shared.cursor_max_step_px,
             recovery_frames=shared.cursor_recovery_frames,
             history_buffer_maxlen=getattr(shared, "cursor_history_buffer_maxlen", 10),
-            ear_freeze_threshold=getattr(shared, "ear_freeze_threshold", 0.28),
+            ear_freeze_threshold=getattr(shared, "ear_freeze_threshold", 0.31),
         )
         self._validate_config(self._config)
         self._pyautogui: Any | None = None
@@ -338,7 +338,8 @@ class CursorController:
         if move_distance < self._config.min_move_px:
             with self._lock:
                 self._tracking_active = True
-                self.history_buffer.append((next_x, next_y))
+                if not self._is_frozen_by_ear:
+                    self.history_buffer.append((next_x, next_y))
                 return self.get_state()
 
         if not hasattr(self, "_debug_cursor_frame_count"):
@@ -347,7 +348,7 @@ class CursorController:
         if self._debug_cursor_frame_count % 30 == 0:
             print(
                 f"[CURSOR DEBUG] Moving to: ({next_x}, {next_y}), raw gaze: ({gaze.x:.3f}, {gaze.y:.3f}), "
-                f"conf={gaze.confidence:.2f}, sys_enabled={system_cursor.enabled}, ctrl_enabled={self._enabled}"
+                f"conf={gaze.confidence:.2f}, sys_enabled={system_cursor.enabled}, ctrl_enabled={self._enabled}, frozen={self._is_frozen_by_ear}"
             )
 
         if system_cursor.enabled:
@@ -366,7 +367,8 @@ class CursorController:
             self._tracking_active = True
             self._last_x = next_x
             self._last_y = next_y
-            self.history_buffer.append((next_x, next_y))
+            if not self._is_frozen_by_ear:
+                self.history_buffer.append((next_x, next_y))
             return self.get_state()
 
     def _apply_action_state(self, action_state: ActionState | None) -> None:

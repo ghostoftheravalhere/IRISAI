@@ -156,27 +156,26 @@ class GazeVoiceFusionEngine:
         timestamp: float | None = None,
     ) -> FusionActionResponse | None:
         """Parse voice utterance and dispatch gaze-anchored native Win32 action."""
-        text = (command_text or "").strip().lower()
+        import re
+
+        raw = str(command_text or "").lower().strip()
+        text = re.sub(r"[^\w\s-]", " ", raw).strip()
         if not text:
             return None
 
-        # Intent classification for mouse actions
-        action: str | None = None
-        if any(w in text for w in ("double click", "double-click", "open")):
-            action = "DOUBLE_CLICK"
-        elif any(w in text for w in ("right click", "right-click", "context menu", "menu")):
-            action = "RIGHT_CLICK"
-        elif any(w in text for w in ("click", "select", "tap", "left click", "press")):
-            action = "LEFT_CLICK"
-        elif any(w in text for w in ("drag", "hold", "grab")):
-            action = "MOUSE_DOWN"
-        elif any(w in text for w in ("drop", "release", "let go")):
-            action = "MOUSE_UP"
+        # Priority 1: Multi-word specific clicks
+        if any(w in text for w in ("double click", "double-click", "doubleclick", "do a double click")):
+            return self.execute_action("DOUBLE_CLICK", timestamp=timestamp)
+        if any(w in text for w in ("right click", "right-click", "rightclick", "do a right click", "context menu", "open menu", "menu")):
+            return self.execute_action("RIGHT_CLICK", timestamp=timestamp)
+        if any(w in text for w in ("drag", "hold", "grab", "start selecting", "begin selection")):
+            return self.execute_action("MOUSE_DOWN", timestamp=timestamp)
+        if any(w in text for w in ("drop", "release", "let go", "stop selecting", "end selection")):
+            return self.execute_action("MOUSE_UP", timestamp=timestamp)
+        if any(w in text for w in ("click", "select", "tap", "left click", "left-click", "single click", "press")) or text in ("click", "open"):
+            return self.execute_action("LEFT_CLICK", timestamp=timestamp)
 
-        if action is None:
-            return None
-
-        return self.execute_action(action, timestamp=timestamp)
+        return None
 
     def execute_action(
         self,

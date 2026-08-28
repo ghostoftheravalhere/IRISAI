@@ -26,7 +26,7 @@ class EyeInteractionConfig:
     # --- EAR classification ---
     ear_close_threshold: float = 0.21
     ear_open_threshold: float = 0.26
-    ear_freeze_threshold: float = 0.28
+    ear_freeze_threshold: float = 0.31
     ear_smoothing_alpha: float = 0.35
 
     # --- Intentional blink timing (milliseconds) ---
