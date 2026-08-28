@@ -12,6 +12,8 @@ const calibrationService = {
   getGuidance: () => api.get("/eye/calibration/guidance"),
   enableCursor: () => api.post("/eye/cursor/enable"),
   disableCursor: () => api.post("/eye/cursor/disable"),
+  getCursorStatus: () => api.get("/api/cursor/status"),
+  toggleCursor: (enabled = null) => api.post("/api/cursor/toggle", enabled !== null ? { enabled } : {}),
 };
 
 export default calibrationService;

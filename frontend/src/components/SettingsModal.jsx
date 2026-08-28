@@ -1,5 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import styles from "./SettingsModal.module.css";
+import { IRISApiClient } from "../services/api_client";
 
 /**
  * SettingsModal — Comprehensive Settings Dialog
@@ -9,6 +10,29 @@ export default function SettingsModal({ isOpen, onClose }) {
   const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
   const [theme, setTheme] = useState("dark");
   const [privacyLevel, setPrivacyLevel] = useState("strict_local");
+  const [osCursorActive, setOsCursorActive] = useState(false);
+  const [cursorStatus, setCursorStatus] = useState(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      IRISApiClient.getCursorStatus().then((status) => {
+        if (status) {
+          setCursorStatus(status);
+          setOsCursorActive(Boolean(status.enabled || status.active));
+        }
+      });
+    }
+  }, [isOpen, activeTab]);
+
+  const handleToggleOsCursor = async (e) => {
+    const nextVal = e.target.checked;
+    setOsCursorActive(nextVal);
+    const updated = await IRISApiClient.toggleCursor(nextVal);
+    if (updated) {
+      setCursorStatus(updated);
+      setOsCursorActive(Boolean(updated.enabled || updated.active));
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -24,18 +48,44 @@ export default function SettingsModal({ isOpen, onClose }) {
 
         <div className={styles.modalBody}>
           <div className={styles.tabsNav}>
-            {["voice", "wakeWord", "theme", "memory", "reasoning", "skills", "privacy", "accessibility"].map((tab) => (
+            {["voice", "cursor", "wakeWord", "theme", "memory", "reasoning", "skills", "privacy", "accessibility"].map((tab) => (
               <button
                 key={tab}
                 className={`${styles.tabBtn} ${activeTab === tab ? styles.activeTab : ""}`}
                 onClick={() => setActiveTab(tab)}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === "cursor" ? "OS Cursor" : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
           </div>
 
           <div className={styles.tabContent}>
+            {activeTab === "cursor" && (
+              <div className={styles.settingGroup}>
+                <label className={styles.toggleRow}>
+                  <div>
+                    <strong>System-Wide OS Cursor Control</strong>
+                    <div style={{ fontSize: "0.75rem", color: "#9ca3af", marginTop: "2px" }}>
+                      Take over native Windows cursor via Win32 DPI-aware engine
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={osCursorActive}
+                    onChange={handleToggleOsCursor}
+                  />
+                </label>
+
+                {cursorStatus && (
+                  <div className={styles.infoBox} style={{ marginTop: "12px" }}>
+                    <div>Status: <strong style={{ color: osCursorActive ? "#34d399" : "#9ca3af" }}>{osCursorActive ? "ACTIVE" : "DISABLED"}</strong></div>
+                    <div>Screen Resolution: <strong>{cursorStatus.screen_width} x {cursorStatus.screen_height}</strong></div>
+                    <div>DPI Awareness: <strong>{cursorStatus.dpi_aware ? "Per-Monitor Aware (Level 2)" : "System Default"}</strong></div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {activeTab === "voice" && (
               <div className={styles.settingGroup}>
                 <label className={styles.label}>Microphone Input Device</label>

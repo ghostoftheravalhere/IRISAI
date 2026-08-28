@@ -171,19 +171,11 @@ export default function Calibration() {
           </button>
           <button
             type="button"
-            className={styles.btnEnable}
-            onClick={enableCursor}
-            disabled={!complete || cursorEnabled}
+            className={cursorEnabled ? styles.btnEnable : styles.btnSecondary}
+            onClick={cursorEnabled ? disableCursor : enableCursor}
+            disabled={!complete && !cursorEnabled}
           >
-            {cursorEnabled ? "Cursor Control Enabled" : "Enable Cursor Control"}
-          </button>
-          <button
-            type="button"
-            className={styles.btnSecondary}
-            onClick={disableCursor}
-            disabled={!cursorEnabled}
-          >
-            Disable Cursor Control
+            {cursorEnabled ? "✓ OS Cursor Takeover Active" : "Enable System-Wide OS Cursor"}
           </button>
         </footer>
       </section>

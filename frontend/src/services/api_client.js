@@ -156,6 +156,38 @@ export class IRISApiClient {
     return res.data;
   }
 
+  static async getCursorStatus() {
+    const res = await safeFetchJson(`${API_BASE_URL}/api/cursor/status`);
+    return res.ok ? res.data : { active: false, enabled: false, error: res.error };
+  }
+
+  static async toggleCursor(enabled = null) {
+    const res = await safeFetchJson(`${API_BASE_URL}/api/cursor/toggle`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(enabled !== null ? { enabled } : {}),
+    });
+    return res.ok ? res.data : { active: false, enabled: false, error: res.error };
+  }
+
+  static async moveCursor(x, y) {
+    const res = await safeFetchJson(`${API_BASE_URL}/api/cursor/move`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ x, y }),
+    });
+    return res.ok ? res.data : { success: false, error: res.error };
+  }
+
+  static async clickCursor(x = null, y = null, button = "left") {
+    const res = await safeFetchJson(`${API_BASE_URL}/api/cursor/click`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ x, y, button }),
+    });
+    return res.ok ? res.data : { success: false, error: res.error };
+  }
+
   static async getGoogleStatus() {
     const res = await safeFetchJson(`${API_BASE_URL}/api/auth/google/status`);
     return res.ok ? res.data : { is_connected: false };

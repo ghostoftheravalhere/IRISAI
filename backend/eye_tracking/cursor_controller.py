@@ -13,6 +13,7 @@ from backend.eye_tracking.eye_interaction_config import (
     default_eye_interaction_config,
 )
 from backend.eye_tracking.gaze_service import EyeGazeService, GazeEstimate
+from backend.services.system_cursor import system_cursor
 from backend.vision.kalman_filter import GazeKalmanFilter
 from backend.utils.logger import get_logger
 
@@ -104,11 +105,12 @@ class CursorController:
             self._kalman_filter.set_parameters(**kwargs)
 
     def enable(self) -> CursorControllerState:
-        """Enable cursor movement if PyAutoGUI is available."""
+        """Enable cursor movement if PyAutoGUI or native SystemCursor is available."""
         with self._lock:
             if self._pyautogui is None:
                 self._pyautogui = self._load_pyautogui()
-            self._enabled = self._pyautogui is not None
+            self._enabled = self._pyautogui is not None or system_cursor.enabled
+            system_cursor.enabled = True
             if self._enabled:
                 logger.info("Eye cursor controller enabled.")
             return self.get_state()
@@ -121,6 +123,7 @@ class CursorController:
             self._paused = False
             self._tracking_active = False
             self._tracking_confidence = 0.0
+            system_cursor.enabled = False
             self._clear_motion_state()
             logger.info("Eye cursor controller disabled.")
             return self.get_state()
@@ -257,11 +260,14 @@ class CursorController:
                 self._tracking_active = True
                 return self.get_state()
 
-        pyautogui.moveTo(
-            next_x,
-            next_y,
-            duration=self._config.move_duration_seconds,
-        )
+        if system_cursor.enabled:
+            system_cursor.move_cursor(next_x, next_y)
+        else:
+            pyautogui.moveTo(
+                next_x,
+                next_y,
+                duration=self._config.move_duration_seconds,
+            )
 
         with self._lock:
             self._tracking_active = True
@@ -298,21 +304,31 @@ class CursorController:
 
         try:
             if action_state.action == ActionType.LEFT_CLICK:
-                pyautogui.click(button="left")
+                if system_cursor.enabled:
+                    system_cursor.click(self._last_x, self._last_y, button="left")
+                else:
+                    pyautogui.click(button="left")
                 try:
                     from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
                     show_click_feedback_popup(text="Left Click", duration_ms=900, x=self._last_x, y=self._last_y)
                 except Exception:
                     pass
             elif action_state.action == ActionType.RIGHT_CLICK:
-                pyautogui.rightClick()
+                if system_cursor.enabled:
+                    system_cursor.click(self._last_x, self._last_y, button="right")
+                else:
+                    pyautogui.rightClick()
                 try:
                     from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
                     show_click_feedback_popup(text="Right Click", duration_ms=900, x=self._last_x, y=self._last_y)
                 except Exception:
                     pass
             elif action_state.action == ActionType.DOUBLE_CLICK:
-                pyautogui.doubleClick()
+                if system_cursor.enabled:
+                    system_cursor.click(self._last_x, self._last_y, button="left")
+                    system_cursor.click(self._last_x, self._last_y, button="left")
+                else:
+                    pyautogui.doubleClick()
                 try:
                     from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
                     show_click_feedback_popup(text="Double Click", duration_ms=900, x=self._last_x, y=self._last_y)
