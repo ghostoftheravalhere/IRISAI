@@ -26,6 +26,7 @@ class EyeInteractionConfig:
     # --- EAR classification ---
     ear_close_threshold: float = 0.21
     ear_open_threshold: float = 0.26
+    ear_freeze_threshold: float = 0.28
     ear_smoothing_alpha: float = 0.35
 
     # --- Intentional blink timing (milliseconds) ---
@@ -64,8 +65,9 @@ class EyeInteractionConfig:
     cursor_min_move_px: float = 2.5
     cursor_edge_padding_px: int = 8
     cursor_move_duration_seconds: float = 0.0
-    cursor_max_step_px: float = 48.0
+    cursor_max_step_px: float = 1200.0
     cursor_recovery_frames: int = 6
+    cursor_history_buffer_maxlen: int = 10
     tracking_confidence_threshold: float = 0.45
 
     # --- Calibration sampling ---

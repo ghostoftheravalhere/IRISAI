@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from math import hypot, isfinite
 from threading import RLock
@@ -33,6 +34,8 @@ class CursorControllerConfig:
     tracking_confidence_threshold: float = 0.45
     max_step_px: float = 1200.0
     recovery_frames: int = 6
+    history_buffer_maxlen: int = 10
+    ear_freeze_threshold: float = 0.28
 
 
 @dataclass(frozen=True)
@@ -75,6 +78,8 @@ class CursorController:
             tracking_confidence_threshold=shared.tracking_confidence_threshold,
             max_step_px=shared.cursor_max_step_px,
             recovery_frames=shared.cursor_recovery_frames,
+            history_buffer_maxlen=getattr(shared, "cursor_history_buffer_maxlen", 10),
+            ear_freeze_threshold=getattr(shared, "ear_freeze_threshold", 0.28),
         )
         self._validate_config(self._config)
         self._pyautogui: Any | None = None
@@ -92,6 +97,8 @@ class CursorController:
         self._last_action_timestamp: float | None = None
         self._last_executed_action_timestamp: float | None = None
         self._kalman_filter = GazeKalmanFilter()
+        self.history_buffer: deque[tuple[int, int]] = deque(maxlen=self._config.history_buffer_maxlen)
+        self._is_frozen_by_ear: bool = False
         self._lock = RLock()
 
     @property
@@ -140,14 +147,18 @@ class CursorController:
         action_state: ActionState | None = None,
         tracking_confidence: float | None = None,
         face_detected: bool = True,
+        blink_state: Any | None = None,
     ) -> CursorControllerState:
-        """Apply action state and move cursor toward the latest gaze estimate."""
+        """Apply action state, check pre-blink EAR freeze gate, and move cursor."""
         with self._lock:
             if not self._enabled:
                 self._tracking_active = False
                 self._tracking_confidence = 0.0
                 self._clear_motion_state()
                 return self.get_state()
+
+            # 1. Update Pre-Blink EAR Freeze Gate
+            self._update_ear_freeze_state(blink_state)
 
             self._apply_action_state(action_state)
             confidence = self._resolve_confidence(tracking_confidence, face_detected)
@@ -168,6 +179,7 @@ class CursorController:
         if pyautogui is None:
             return self.disable()
 
+        # 2. Execute pointer actions (using pre-blink coordinates from history buffer)
         self._execute_pointer_action(pyautogui, action_state)
 
         gaze = self._gaze_service.get_latest_gaze()
@@ -189,6 +201,53 @@ class CursorController:
             with self._lock:
                 self._clear_motion_state()
             return self.get_state()
+
+    def _extract_ear(self, blink_state: Any) -> float | None:
+        """Extract scalar EAR value from blink state if available."""
+        if blink_state is None:
+            return None
+        if isinstance(blink_state, (int, float)):
+            val = float(blink_state)
+            return val if isfinite(val) else None
+        smoothed = getattr(blink_state, "smoothedEar", None)
+        if smoothed is not None and isfinite(smoothed):
+            return float(smoothed)
+        left = getattr(blink_state, "leftEar", None)
+        right = getattr(blink_state, "rightEar", None)
+        if left is not None and right is not None and isfinite(left) and isfinite(right):
+            return float((left + right) / 2.0)
+        if left is not None and isfinite(left):
+            return float(left)
+        if right is not None and isfinite(right):
+            return float(right)
+        return None
+
+    def _update_ear_freeze_state(self, blink_state: Any | None) -> None:
+        """Update EAR pre-blink freeze gate state to eliminate blink drift."""
+        if blink_state is None:
+            return
+
+        current_ear = self._extract_ear(blink_state)
+        is_hold_active = bool(getattr(blink_state, "holdActive", False))
+        is_eye_closing = bool(
+            getattr(blink_state, "leftBlink", False)
+            or getattr(blink_state, "rightBlink", False)
+            or getattr(blink_state, "bothBlink", False)
+            or not (getattr(blink_state, "leftEyeOpen", True) and getattr(blink_state, "rightEyeOpen", True))
+        )
+
+        if current_ear is not None and current_ear < self._config.ear_freeze_threshold:
+            self._is_frozen_by_ear = True
+        elif is_hold_active or is_eye_closing:
+            self._is_frozen_by_ear = True
+        elif (
+            current_ear is not None
+            and current_ear >= self._config.ear_freeze_threshold
+            and getattr(blink_state, "leftEyeOpen", True)
+            and getattr(blink_state, "rightEyeOpen", True)
+            and not is_hold_active
+        ):
+            self._is_frozen_by_ear = False
 
     def get_state(self) -> CursorControllerState:
         """Return the latest cursor controller state."""
@@ -216,7 +275,7 @@ class CursorController:
         return min(max(float(tracking_confidence), 0.0), 1.0)
 
     def _move_toward_gaze(self, pyautogui: Any, gaze: GazeEstimate) -> CursorControllerState:
-        """Smooth and clamp gaze into a cursor move, respecting the dead zone."""
+        """Smooth and clamp gaze into a cursor move, respecting the dead zone and EAR freeze gate."""
         if system_cursor.enabled:
             current_x_i, current_y_i = system_cursor.get_cursor_position()
             screen_width, screen_height = system_cursor.screen_size
@@ -250,6 +309,11 @@ class CursorController:
                 self._tracking_active = True
                 return self.get_state()
 
+            # EAR Freeze Gate: if eyelid is closing or in hold active, freeze physical cursor
+            if self._is_frozen_by_ear:
+                self._tracking_active = True
+                return self.get_state()
+
         next_x, next_y = self._smooth_target(
             target_x=target_x,
             target_y=target_y,
@@ -267,6 +331,7 @@ class CursorController:
         if move_distance < self._config.min_move_px:
             with self._lock:
                 self._tracking_active = True
+                self.history_buffer.append((next_x, next_y))
                 return self.get_state()
 
         if not hasattr(self, "_debug_cursor_frame_count"):
@@ -294,6 +359,7 @@ class CursorController:
             self._tracking_active = True
             self._last_x = next_x
             self._last_y = next_y
+            self.history_buffer.append((next_x, next_y))
             return self.get_state()
 
     def _apply_action_state(self, action_state: ActionState | None) -> None:
@@ -315,7 +381,7 @@ class CursorController:
             self._drag_mode = action_state.dragMode
 
     def _execute_pointer_action(self, pyautogui: Any, action_state: ActionState | None) -> None:
-        """Execute a pointer action only when cursor control is enabled."""
+        """Execute a pointer action using pre-blink history coordinates when cursor control is enabled."""
         if action_state is None or action_state.timestamp is None:
             return
         if action_state.timestamp != self._last_action_timestamp:
@@ -323,36 +389,43 @@ class CursorController:
         if action_state.timestamp == self._last_executed_action_timestamp:
             return
 
+        # Pull retro-coordinates: oldest entry in history buffer (before eyelid began closing)
+        with self._lock:
+            if len(self.history_buffer) > 0:
+                click_x, click_y = self.history_buffer[0]
+            else:
+                click_x, click_y = self._last_x, self._last_y
+
         try:
             if action_state.action == ActionType.LEFT_CLICK:
                 if system_cursor.enabled:
-                    system_cursor.click(self._last_x, self._last_y, button="left")
+                    system_cursor.click(click_x, click_y, button="left")
                 else:
                     pyautogui.click(button="left")
                 try:
                     from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
-                    show_click_feedback_popup(text="Left Click", duration_ms=900, x=self._last_x, y=self._last_y)
+                    show_click_feedback_popup(text="Left Click", duration_ms=900, x=click_x, y=click_y)
                 except Exception:
                     pass
             elif action_state.action == ActionType.RIGHT_CLICK:
                 if system_cursor.enabled:
-                    system_cursor.click(self._last_x, self._last_y, button="right")
+                    system_cursor.click(click_x, click_y, button="right")
                 else:
                     pyautogui.rightClick()
                 try:
                     from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
-                    show_click_feedback_popup(text="Right Click", duration_ms=900, x=self._last_x, y=self._last_y)
+                    show_click_feedback_popup(text="Right Click", duration_ms=900, x=click_x, y=click_y)
                 except Exception:
                     pass
             elif action_state.action == ActionType.DOUBLE_CLICK:
                 if system_cursor.enabled:
-                    system_cursor.click(self._last_x, self._last_y, button="left")
-                    system_cursor.click(self._last_x, self._last_y, button="left")
+                    system_cursor.click(click_x, click_y, button="left")
+                    system_cursor.click(click_x, click_y, button="left")
                 else:
                     pyautogui.doubleClick()
                 try:
                     from backend.eye_tracking.click_feedback_overlay import show_click_feedback_popup
-                    show_click_feedback_popup(text="Double Click", duration_ms=900, x=self._last_x, y=self._last_y)
+                    show_click_feedback_popup(text="Double Click", duration_ms=900, x=click_x, y=click_y)
                 except Exception:
                     pass
             elif action_state.action == ActionType.TOGGLE_DRAG:
@@ -479,6 +552,8 @@ class CursorController:
         self._last_y = None
         self._smoothed_x = None
         self._smoothed_y = None
+        self.history_buffer.clear()
+        self._is_frozen_by_ear = False
         if hasattr(self, "_kalman_filter") and self._kalman_filter is not None:
             self._kalman_filter.reset()
 
@@ -529,3 +604,7 @@ class CursorController:
             raise ValueError("max_step_px must be positive.")
         if config.recovery_frames < 0:
             raise ValueError("recovery_frames cannot be negative.")
+        if config.history_buffer_maxlen < 1:
+            raise ValueError("history_buffer_maxlen must be at least 1.")
+        if not 0.0 <= config.ear_freeze_threshold <= 1.0:
+            raise ValueError("ear_freeze_threshold must be in [0.0, 1.0].")

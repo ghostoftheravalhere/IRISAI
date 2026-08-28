@@ -384,6 +384,7 @@ class CameraService:
                 action_state=action_state,
                 tracking_confidence=tracking_confidence,
                 face_detected=face_detected,
+                blink_state=blink_state,
             )
             return self._draw_debug_overlay(
                 frame=result.frame,
@@ -407,6 +408,7 @@ class CameraService:
                 action_state=action_state,
                 tracking_confidence=0.0,
                 face_detected=False,
+                blink_state=blink_state,
             )
             return frame
 
@@ -478,8 +480,9 @@ class CameraService:
         action_state: ActionState | None,
         tracking_confidence: float = 1.0,
         face_detected: bool = True,
+        blink_state: BlinkState | None = None,
     ) -> CursorControllerState | None:
-        """Update cursor movement from latest gaze and action state when configured."""
+        """Update cursor movement from latest gaze, blink, and action state when configured."""
         with self._lock:
             cursor_controller = self._cursor_controller
 
@@ -491,6 +494,7 @@ class CameraService:
                 action_state=action_state,
                 tracking_confidence=tracking_confidence,
                 face_detected=face_detected,
+                blink_state=blink_state,
             )
         except Exception:
             logger.exception("Cursor update failed.")
