@@ -27,6 +27,7 @@ from backend.eye_tracking.face_mesh_service import (
 )
 from backend.utils.helpers import compute_eye_center
 from backend.utils.logger import get_logger
+from backend.vision.calibration_engine import CalibrationDataPoint, PolynomialCalibrator
 
 logger = get_logger(__name__)
 
@@ -148,6 +149,7 @@ class EyeCalibrationService:
         self._samples: list[CalibrationSample] = []
         self._saved_state: CalibrationState | None = None
         self._mapping: CalibrationMapping | None = None
+        self._polynomial_calibrator: PolynomialCalibrator | None = None
         self._quality: CalibrationQuality | None = None
         self._lock = RLock()
 
@@ -157,6 +159,7 @@ class EyeCalibrationService:
             self._samples.clear()
             self._saved_state = None
             self._mapping = None
+            self._polynomial_calibrator = None
             self._quality = None
             logger.info("Eye calibration restarted.")
             return self.get_progress()
@@ -222,6 +225,29 @@ class EyeCalibrationService:
             if len(self._samples) == len(self.points):
                 self._mapping = self._compute_mapping(self._samples)
                 self._quality = self._mapping.quality if self._mapping is not None else None
+
+                try:
+                    poly = PolynomialCalibrator()
+                    poly_pts = [
+                        CalibrationDataPoint(
+                            target_x=s.point.x,
+                            target_y=s.point.y,
+                            pupil_x=s.eye_center.x,
+                            pupil_y=s.eye_center.y,
+                        )
+                        for s in self._samples
+                    ]
+                    poly.fit(poly_pts)
+                    self._polynomial_calibrator = poly
+                    logger.info(
+                        "Fitted 2nd-degree PolynomialCalibrator on %d points: rmse=%.4f, r2=%.4f",
+                        len(poly_pts),
+                        poly.fitted_model.rmse if poly.fitted_model else 0.0,
+                        poly.fitted_model.r2_score if poly.fitted_model else 0.0,
+                    )
+                except Exception as exc:
+                    logger.warning("Polynomial calibration fitting failed: %s", exc)
+
                 if self._quality is not None and self._quality.recommend_recalibration:
                     logger.warning(
                         "Calibration quality is %s (score=%.2f, rmse=%.4f). Recalibration recommended.",
@@ -237,6 +263,11 @@ class EyeCalibrationService:
         """Return computed calibration mapping values, if calibration is complete."""
         with self._lock:
             return self._mapping
+
+    def get_polynomial_calibrator(self) -> PolynomialCalibrator | None:
+        """Return computed polynomial calibrator, if calibration is complete."""
+        with self._lock:
+            return self._polynomial_calibrator
 
     def save_state(self) -> CalibrationState:
         """Save and return the current calibration state."""

@@ -260,14 +260,26 @@ class CursorController:
                 self._tracking_active = True
                 return self.get_state()
 
+        if not hasattr(self, "_debug_cursor_frame_count"):
+            self._debug_cursor_frame_count = 0
+        self._debug_cursor_frame_count += 1
+        if self._debug_cursor_frame_count % 30 == 0:
+            print(
+                f"[CURSOR DEBUG] Moving to: ({next_x}, {next_y}), raw gaze: ({gaze.x:.3f}, {gaze.y:.3f}), "
+                f"conf={gaze.confidence:.2f}, sys_enabled={system_cursor.enabled}, ctrl_enabled={self._enabled}"
+            )
+
         if system_cursor.enabled:
             system_cursor.move_cursor(next_x, next_y)
-        else:
-            pyautogui.moveTo(
-                next_x,
-                next_y,
-                duration=self._config.move_duration_seconds,
-            )
+        elif pyautogui is not None:
+            try:
+                pyautogui.moveTo(
+                    next_x,
+                    next_y,
+                    duration=self._config.move_duration_seconds,
+                )
+            except Exception:
+                pass
 
         with self._lock:
             self._tracking_active = True
@@ -445,6 +457,8 @@ class CursorController:
 
     def _clear_motion_state(self) -> None:
         """Clear state that could otherwise cause cursor jumps."""
+        if self._last_x is None and self._smoothed_x is None and not getattr(self._kalman_filter, "is_initialized", False):
+            return
         self._last_x = None
         self._last_y = None
         self._smoothed_x = None

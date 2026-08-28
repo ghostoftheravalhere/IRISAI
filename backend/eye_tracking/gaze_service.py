@@ -65,12 +65,16 @@ class EyeGazeService:
             return self._clear_latest_gaze()
 
         mapping = self._calibration_service.get_mapping()
-        if mapping is None:
+        poly_calib = getattr(self._calibration_service, "get_polynomial_calibrator", lambda: None)()
+        if mapping is None and (poly_calib is None or poly_calib.fitted_model is None):
             return self._clear_latest_gaze()
 
         try:
             eye_center = self._compute_eye_center(eye_data)
-            raw_x, raw_y = self._apply_mapping(eye_center, mapping)
+            if poly_calib is not None and poly_calib.fitted_model is not None:
+                raw_x, raw_y = poly_calib.predict(eye_center.x, eye_center.y)
+            else:
+                raw_x, raw_y = self._apply_mapping(eye_center, mapping)
         except ValueError as exc:
             logger.warning("Skipping invalid gaze estimate: %s", exc)
             return self._clear_latest_gaze()

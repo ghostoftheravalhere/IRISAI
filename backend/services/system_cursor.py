@@ -110,6 +110,12 @@ class SystemCursor:
 
         clamped_x, clamped_y = self.clamp_coordinates(x, y)
 
+        if not hasattr(self, "_debug_counter"):
+            self._debug_counter = 0
+        self._debug_counter += 1
+        if self._debug_counter % 30 == 0:
+            print(f"[SYSTEM CURSOR DEBUG] SetCursorPos -> ({clamped_x}, {clamped_y}) [screen: {self.screen_size[0]}x{self.screen_size[1]}]")
+
         if sys.platform == "win32":
             try:
                 import ctypes

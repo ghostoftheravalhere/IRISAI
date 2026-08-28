@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
 from backend.services.system_cursor import system_cursor
@@ -47,17 +47,28 @@ class CursorClickRequest(BaseModel):
 
 
 @router.post("/toggle", response_model=CursorStatusResponse)
-async def toggle_cursor(body: CursorToggleRequest | None = None) -> dict[str, Any]:
+async def toggle_cursor(request: Request, body: CursorToggleRequest | None = None) -> dict[str, Any]:
     """Enable/disable OS-level cursor takeover."""
     explicit_state = body.enabled if body else None
-    system_cursor.toggle(explicit_state)
+    new_state = system_cursor.toggle(explicit_state)
+    cursor_ctrl = getattr(request.app.state, "cursor_controller", None)
+    if cursor_ctrl is not None:
+        if new_state:
+            cursor_ctrl.enable()
+        else:
+            cursor_ctrl.disable()
     return system_cursor.get_status()
 
 
 @router.get("/status", response_model=CursorStatusResponse)
-async def get_cursor_status() -> dict[str, Any]:
+async def get_cursor_status(request: Request) -> dict[str, Any]:
     """Return whether OS cursor control is active and current screen dimensions."""
-    return system_cursor.get_status()
+    status = system_cursor.get_status()
+    cursor_ctrl = getattr(request.app.state, "cursor_controller", None)
+    if cursor_ctrl is not None:
+        status["enabled"] = bool(system_cursor.enabled or cursor_ctrl.get_state().enabled)
+        status["active"] = status["enabled"]
+    return status
 
 
 @router.post("/move")
