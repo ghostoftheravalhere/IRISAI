@@ -79,6 +79,25 @@ class AutomationDispatcher:
             if intent == VoiceIntentType.STOP_CURSOR_CONTROL:
                 return self._dispatch_stop_cursor_control(voice_intent)
 
+            if intent in {
+                VoiceIntentType.PRIMARY_CLICK,
+                VoiceIntentType.RIGHT_CLICK,
+                VoiceIntentType.DOUBLE_CLICK,
+                VoiceIntentType.START_SELECTING,
+                VoiceIntentType.STOP_SELECTING,
+            }:
+                from backend.fusion.fusion_engine import gaze_voice_fusion
+                action_map = {
+                    VoiceIntentType.PRIMARY_CLICK: "LEFT_CLICK",
+                    VoiceIntentType.RIGHT_CLICK: "RIGHT_CLICK",
+                    VoiceIntentType.DOUBLE_CLICK: "DOUBLE_CLICK",
+                    VoiceIntentType.START_SELECTING: "MOUSE_DOWN",
+                    VoiceIntentType.STOP_SELECTING: "MOUSE_UP",
+                }
+                action_name = action_map[intent]
+                resp = gaze_voice_fusion.execute_action(action_name)
+                return AutomationResult(resp.success, intent, resp.message)
+
             if intent in {VoiceIntentType.OPEN_APPLICATION, VoiceIntentType.OPEN_CHROME, VoiceIntentType.OPEN_NOTEPAD}:
                 return self._dispatch_open(voice_intent)
 

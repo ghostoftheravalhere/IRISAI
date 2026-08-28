@@ -175,6 +175,12 @@ def create_app() -> FastAPI:
         from backend.automation.app_resolver import app_resolver
         return {"applications": app_resolver.list_installed_applications()}
 
+    @app.get("/api/v1/fusion/status")
+    async def get_fusion_status():
+        """Return real-time multimodal gaze-voice fusion status and anchor telemetry."""
+        from backend.fusion.fusion_engine import gaze_voice_fusion
+        return gaze_voice_fusion.get_status()
+
     @app.get("/api/v1/events/history")
     async def get_event_history():
         """Return recent EventBus history for Command Log state synchronization."""
@@ -235,6 +241,13 @@ def _attach_container(app: FastAPI, container: AppContainer) -> None:
     app.state.voice = container.voice
     from backend.voice.speech_output import SpeechOutputManager
     app.state.speech_output_manager = getattr(container, "speech_output_manager", SpeechOutputManager(event_bus=container.event_bus))
+
+    from backend.fusion.fusion_engine import gaze_voice_fusion
+    app.state.fusion_engine = gaze_voice_fusion
+    if getattr(container, "cursor_controller", None) is not None:
+        gaze_voice_fusion.set_cursor_controller(container.cursor_controller)
+    if getattr(container, "voice", None) is not None:
+        container.voice.set_on_speech_start(gaze_voice_fusion.handle_speech_start)
 
     def _global_domain_event_handler(event: Any):
         try:

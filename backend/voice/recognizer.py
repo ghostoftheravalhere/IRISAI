@@ -128,9 +128,11 @@ class VoiceRecognitionService:
         self,
         config: VoiceRecognitionConfig | None = None,
         on_transcript: TranscriptHandler | None = None,
+        on_speech_start: Callable[[], None] | None = None,
     ) -> None:
         self._config = config or VoiceRecognitionConfig()
         self._on_transcript = on_transcript
+        self._on_speech_start = on_speech_start
         self._event_bus = self._config.event_bus
         self._preprocessor = self._config.preprocessor or AudioPreprocessor(
             filters=[
@@ -158,6 +160,11 @@ class VoiceRecognitionService:
         self._tts_suppression_until: float = 0.0
         self._tts_active: bool = False
         self._validate_config(self._config)
+
+    def set_on_speech_start(self, callback: Callable[[], None] | None) -> None:
+        """Attach a callback triggered on speech onset / VAD activation."""
+        with self._lock:
+            self._on_speech_start = callback
 
     def set_tts_active(self, active: bool, duration_sec: float = 0.0) -> None:
         """Mark TTS as active/inactive and set hardware audio suppression window."""
@@ -280,7 +287,14 @@ class VoiceRecognitionService:
             self._ptt_active.set()
             self._execution_status = "Push-to-talk active"
             self._microphone_status = "On"
-            return self.get_state()
+
+        if self._on_speech_start is not None:
+            try:
+                self._on_speech_start()
+            except Exception:
+                pass
+
+        return self.get_state()
 
     def push_to_talk_stop(self) -> VoiceRecognitionState:
         """Stop capturing audio in push-to-talk mode and flush any buffered speech."""
@@ -475,6 +489,11 @@ class VoiceRecognitionService:
                     rms = float(np.sqrt(np.mean(np.square(mono_block)))) if mono_block.size else 0.0
 
                     if rms >= self._config.silence_threshold:
+                        if not speech_blocks and self._on_speech_start is not None:
+                            try:
+                                self._on_speech_start()
+                            except Exception:
+                                pass
                         if trailing_buffer and not speech_blocks:
                             # Keep a little pre-roll so onsets are not clipped.
                             speech_blocks.extend(trailing_buffer)

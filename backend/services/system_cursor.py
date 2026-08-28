@@ -178,6 +178,93 @@ class SystemCursor:
                 return False
         return True
 
+    def double_click(
+        self,
+        x: float | int | None = None,
+        y: float | int | None = None,
+        button: str = "left",
+    ) -> bool:
+        """Execute a native double click at current or specified coordinates if enabled."""
+        with self._lock:
+            if not self._enabled:
+                return False
+
+        if x is not None and y is not None:
+            self.move_cursor(x, y)
+
+        c1 = self.click(x=None, y=None, button=button)
+        if sys.platform == "win32":
+            import time
+            time.sleep(0.05)
+        c2 = self.click(x=None, y=None, button=button)
+        return c1 and c2
+
+    def mouse_down(
+        self,
+        x: float | int | None = None,
+        y: float | int | None = None,
+        button: str = "left",
+    ) -> bool:
+        """Press and hold mouse button down at current or specified coordinates if enabled."""
+        with self._lock:
+            if not self._enabled:
+                return False
+
+        if x is not None and y is not None:
+            self.move_cursor(x, y)
+
+        btn = (button or "left").lower().strip()
+        if btn == "right":
+            down_flag = MOUSEEVENTF_RIGHTDOWN
+        elif btn == "middle":
+            down_flag = MOUSEEVENTF_MIDDLEDOWN
+        else:
+            down_flag = MOUSEEVENTF_LEFTDOWN
+
+        if sys.platform == "win32":
+            try:
+                import ctypes
+
+                ctypes.windll.user32.mouse_event(down_flag, 0, 0, 0, 0)
+                return True
+            except Exception as exc:
+                logger.error("Failed to execute mouse_event mouse_down (%s): %s", btn, exc)
+                return False
+        return True
+
+    def mouse_up(
+        self,
+        x: float | int | None = None,
+        y: float | int | None = None,
+        button: str = "left",
+    ) -> bool:
+        """Release mouse button at current or specified coordinates if enabled."""
+        with self._lock:
+            if not self._enabled:
+                return False
+
+        if x is not None and y is not None:
+            self.move_cursor(x, y)
+
+        btn = (button or "left").lower().strip()
+        if btn == "right":
+            up_flag = MOUSEEVENTF_RIGHTUP
+        elif btn == "middle":
+            up_flag = MOUSEEVENTF_MIDDLEUP
+        else:
+            up_flag = MOUSEEVENTF_LEFTUP
+
+        if sys.platform == "win32":
+            try:
+                import ctypes
+
+                ctypes.windll.user32.mouse_event(up_flag, 0, 0, 0, 0)
+                return True
+            except Exception as exc:
+                logger.error("Failed to execute mouse_event mouse_up (%s): %s", btn, exc)
+                return False
+        return True
+
     def toggle(self, enable: bool | None = None) -> bool:
         """Toggle or explicitly set cursor takeover state."""
         with self._lock:

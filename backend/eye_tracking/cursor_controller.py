@@ -249,6 +249,13 @@ class CursorController:
         ):
             self._is_frozen_by_ear = False
 
+    def get_current_position(self) -> tuple[int, int]:
+        """Return current tracked cursor coordinates or live OS position."""
+        with self._lock:
+            if self._last_x is not None and self._last_y is not None:
+                return (self._last_x, self._last_y)
+        return system_cursor.get_cursor_position()
+
     def get_state(self) -> CursorControllerState:
         """Return the latest cursor controller state."""
         with self._lock:
