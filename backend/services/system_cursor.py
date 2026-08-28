@@ -152,9 +152,6 @@ class SystemCursor:
             if not self._enabled:
                 return False
 
-        if x is not None and y is not None:
-            self.move_cursor(x, y)
-
         btn = (button or "left").lower().strip()
         if btn == "right":
             down_flag = MOUSEEVENTF_RIGHTDOWN
@@ -170,6 +167,12 @@ class SystemCursor:
             try:
                 import ctypes
 
+                # Step 1: Explicitly set position if coordinates provided
+                if x is not None and y is not None:
+                    clamped_x, clamped_y = self.clamp_coordinates(x, y)
+                    ctypes.windll.user32.SetCursorPos(int(clamped_x), int(clamped_y))
+
+                # Step 2: Fire the event with ZEROED coordinates
                 ctypes.windll.user32.mouse_event(down_flag, 0, 0, 0, 0)
                 ctypes.windll.user32.mouse_event(up_flag, 0, 0, 0, 0)
                 return True
@@ -189,15 +192,42 @@ class SystemCursor:
             if not self._enabled:
                 return False
 
-        if x is not None and y is not None:
-            self.move_cursor(x, y)
+        btn = (button or "left").lower().strip()
+        if btn == "right":
+            down_flag = MOUSEEVENTF_RIGHTDOWN
+            up_flag = MOUSEEVENTF_RIGHTUP
+        elif btn == "middle":
+            down_flag = MOUSEEVENTF_MIDDLEDOWN
+            up_flag = MOUSEEVENTF_MIDDLEUP
+        else:
+            down_flag = MOUSEEVENTF_LEFTDOWN
+            up_flag = MOUSEEVENTF_LEFTUP
 
-        c1 = self.click(x=None, y=None, button=button)
         if sys.platform == "win32":
-            import time
-            time.sleep(0.05)
-        c2 = self.click(x=None, y=None, button=button)
-        return c1 and c2
+            try:
+                import ctypes
+                import time
+
+                # Step 1: Explicitly set position if coordinates provided
+                if x is not None and y is not None:
+                    clamped_x, clamped_y = self.clamp_coordinates(x, y)
+                    ctypes.windll.user32.SetCursorPos(int(clamped_x), int(clamped_y))
+
+                # Click cycle 1
+                ctypes.windll.user32.mouse_event(down_flag, 0, 0, 0, 0)
+                ctypes.windll.user32.mouse_event(up_flag, 0, 0, 0, 0)
+
+                # Strict 50ms sleep between click cycles so OS doesn't drop the input
+                time.sleep(0.05)
+
+                # Click cycle 2
+                ctypes.windll.user32.mouse_event(down_flag, 0, 0, 0, 0)
+                ctypes.windll.user32.mouse_event(up_flag, 0, 0, 0, 0)
+                return True
+            except Exception as exc:
+                logger.error("Failed to execute double_click (%s): %s", btn, exc)
+                return False
+        return True
 
     def mouse_down(
         self,
@@ -209,9 +239,6 @@ class SystemCursor:
         with self._lock:
             if not self._enabled:
                 return False
-
-        if x is not None and y is not None:
-            self.move_cursor(x, y)
 
         btn = (button or "left").lower().strip()
         if btn == "right":
@@ -225,6 +252,12 @@ class SystemCursor:
             try:
                 import ctypes
 
+                # Step 1: Explicitly set position if coordinates provided
+                if x is not None and y is not None:
+                    clamped_x, clamped_y = self.clamp_coordinates(x, y)
+                    ctypes.windll.user32.SetCursorPos(int(clamped_x), int(clamped_y))
+
+                # Step 2: Fire the event with ZEROED coordinates
                 ctypes.windll.user32.mouse_event(down_flag, 0, 0, 0, 0)
                 return True
             except Exception as exc:
@@ -243,9 +276,6 @@ class SystemCursor:
             if not self._enabled:
                 return False
 
-        if x is not None and y is not None:
-            self.move_cursor(x, y)
-
         btn = (button or "left").lower().strip()
         if btn == "right":
             up_flag = MOUSEEVENTF_RIGHTUP
@@ -258,6 +288,12 @@ class SystemCursor:
             try:
                 import ctypes
 
+                # Step 1: Explicitly set position if coordinates provided
+                if x is not None and y is not None:
+                    clamped_x, clamped_y = self.clamp_coordinates(x, y)
+                    ctypes.windll.user32.SetCursorPos(int(clamped_x), int(clamped_y))
+
+                # Step 2: Fire the event with ZEROED coordinates
                 ctypes.windll.user32.mouse_event(up_flag, 0, 0, 0, 0)
                 return True
             except Exception as exc:
