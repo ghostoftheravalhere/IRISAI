@@ -15,6 +15,7 @@ from backend.api.routes import (
     agent_routes,
     auth_routes,
     camera,
+    cursor_routes,
     dialogue_routes,
     eye,
     gaze_dataset_routes,
@@ -102,6 +103,9 @@ def create_app() -> FastAPI:
     app.include_router(camera.router, prefix="/api/v1")
     app.include_router(eye.router, prefix="/eye")
     app.include_router(eye.router, prefix="/api/v1/eye")
+    app.include_router(cursor_routes.router, prefix="/api/cursor")
+    app.include_router(cursor_routes.router, prefix="/cursor")
+    app.include_router(cursor_routes.router, prefix="/api/v1/cursor")
     app.include_router(voice.router, prefix="/voice")
     app.include_router(voice.router, prefix="/api/v1/voice")
     app.include_router(vision_routes.router, prefix="/api/v1")
