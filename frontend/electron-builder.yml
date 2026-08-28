@@ -1,0 +1,30 @@
+appId: com.irisai.desktop
+productName: IRIS AI
+directories:
+  output: dist
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+extraResources:
+  - from: ../backend
+    to: backend
+    filter:
+      - "**/*"
+      - "!.pytest_cache/**/*"
+      - "!**/__pycache__/**/*"
+      - "!**/*.pyc"
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: IRIS AI
+  artifactName: IRIS-AI-Setup-v2.4.5.${ext}
+  uninstallDisplayName: IRIS AI

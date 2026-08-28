@@ -1,6 +1,6 @@
 {
   "name": "iris-ai",
-  "version": "2.4.4",
+  "version": "2.4.5",
   "description": "IRIS AI — Intelligent Responsive Interface System",
   "main": "electron/main.js",
   "scripts": {
@@ -8,64 +8,11 @@
     "dev:backend": "powershell -Command \"Set-Location ..; $env:PYTHONPATH='.'; & backend\\.venv\\Scripts\\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000\"",
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 tcp:8000 && electron .",
-    "build": "vite build",
-    "build:backend": "powershell -Command \"Set-Location ..; & backend\\.venv\\Scripts\\python.exe -m PyInstaller --clean -y iris_backend.spec\"",
-    "package:dir": "vite build && npx electron-builder --win dir",
-    "package:installer": "vite build && npx electron-builder --win nsis portable",
-    "package:win": "vite build && npx electron-builder --win",
-    "package:all": "npm run build:backend && npm run package:installer",
+    "build": "vite build && npx electron-builder --win --x64",
+    "build:vite": "vite build",
     "electron": "electron .",
     "preview": "vite preview",
     "lint": "eslint src --ext .js,.jsx"
-  },
-  "build": {
-    "appId": "com.irisai.desktop",
-    "productName": "IRIS AI",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "electron/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "../dist/iris_backend",
-        "to": "iris_backend",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "IRIS AI",
-      "artifactName": "IRIS-AI-Setup-v2.4.4.${ext}",
-      "uninstallDisplayName": "IRIS AI"
-    },
-    "portable": {
-      "artifactName": "IRIS-AI-v2.4.4-portable.exe"
-    }
   },
   "dependencies": {
     "react": "^18.3.1",

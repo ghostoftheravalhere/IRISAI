@@ -89,16 +89,40 @@ class BackendManager {
   }
 
   /**
-   * Resolve backend executable path (packaged binary or dev python interpreter).
+   * Resolve backend executable path (packaged virtualenv/binary or dev python interpreter).
    */
   getBackendExecutable() {
-    const binaryPath = this.getBackendPath();
-    if (binaryPath) {
-      return binaryPath;
+    const isWin = process.platform === "win32";
+
+    if (this.isPackaged()) {
+      // 1. Packaged virtual environment python.exe in extraResources
+      const packagedPython = isWin
+        ? path.join(process.resourcesPath, "backend", ".venv", "Scripts", "python.exe")
+        : path.join(process.resourcesPath, "backend", ".venv", "bin", "python");
+
+      if (fs.existsSync(packagedPython)) {
+        console.log("[ELECTRON] Packaged Python interpreter found at:", packagedPython);
+        return packagedPython;
+      }
+
+      // 2. Alternative resources path for portable or unpacked layouts
+      const altPython = isWin
+        ? path.join(path.dirname(process.execPath), "resources", "backend", ".venv", "Scripts", "python.exe")
+        : path.join(path.dirname(process.execPath), "resources", "backend", ".venv", "bin", "python");
+
+      if (fs.existsSync(altPython)) {
+        console.log("[ELECTRON] Packaged Python interpreter found at alt path:", altPython);
+        return altPython;
+      }
+
+      // 3. Packaged standalone binary (if present)
+      const binaryPath = this.getBackendPath();
+      if (binaryPath) {
+        return binaryPath;
+      }
     }
 
-    // Development mode fallback: virtual environment python
-    const isWin = process.platform === "win32";
+    // 4. Development mode fallback: virtual environment python
     const venvPython = isWin
       ? path.resolve(__dirname, "../../backend/.venv/Scripts/python.exe")
       : path.resolve(__dirname, "../../backend/.venv/bin/python");
@@ -115,6 +139,17 @@ class BackendManager {
    * Resolve backend working directory.
    */
   getBackendDir() {
+    if (this.isPackaged()) {
+      const resourcesBackend = path.join(process.resourcesPath, "backend");
+      if (fs.existsSync(resourcesBackend)) {
+        return resourcesBackend;
+      }
+      const altResourcesBackend = path.join(path.dirname(process.execPath), "resources", "backend");
+      if (fs.existsSync(altResourcesBackend)) {
+        return altResourcesBackend;
+      }
+    }
+
     const execPath = this.getBackendExecutable();
     if (execPath && execPath.endsWith(".exe") && !execPath.toLowerCase().includes("python")) {
       return path.dirname(execPath);
@@ -233,8 +268,10 @@ class BackendManager {
         stdio: "ignore",
         env: {
           ...process.env,
+          PYTHONPATH: backendDir,
           PYTHONUNBUFFERED: "1",
           PYTHONIOENCODING: "utf-8",
+          IRIS_RUNNING_IN_ELECTRON: "1",
         },
       });
 
