@@ -63,6 +63,7 @@ app = create_app()
 if __name__ == "__main__":
     import os
     logger.info("[MAIN] Starting IRIS AI Backend in single-process mode (PID=%d)", os.getpid())
+    print("SERVER_READY", flush=True)
     uvicorn.run(
         app,
         host=settings.API_HOST,

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IRIS AI — Initializing</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-app-region: drag;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #08090e;
+      color: #f3f4f6;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      border-radius: 16px;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8), 0 0 40px rgba(99, 102, 241, 0.2);
+      position: relative;
+    }
+
+    /* Ambient Background Glow */
+    .glow-backdrop {
+      position: absolute;
+      width: 260px;
+      height: 260px;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.25) 0%, rgba(6, 182, 212, 0.12) 50%, transparent 70%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      filter: blur(40px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      width: 88%;
+    }
+
+    /* Iris Animated Eye Core */
+    .logo-container {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .pulse-ring {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 2px solid rgba(99, 102, 241, 0.4);
+      animation: pulse 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    .pulse-ring-2 {
+      position: absolute;
+      width: 120%;
+      height: 120%;
+      border-radius: 50%;
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      animation: pulse 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite 0.8s;
+    }
+
+    .spinner-disc {
+      position: absolute;
+      width: 58px;
+      height: 58px;
+      border-radius: 50%;
+      border: 3px solid transparent;
+      border-top-color: #6366f1;
+      border-right-color: #06b6d4;
+      border-bottom-color: #a855f7;
+      animation: spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+      filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.6));
+    }
+
+    .center-orb {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #6366f1 0%, #06b6d4 100%);
+      box-shadow: 0 0 16px rgba(99, 102, 241, 0.9);
+      animation: glow 1.8s ease-in-out infinite alternate;
+    }
+
+    /* Titles */
+    .brand-title {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      background: linear-gradient(135deg, #ffffff 20%, #c7d2fe 60%, #818cf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: center;
+    }
+
+    .version-pill {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      background: rgba(99, 102, 241, 0.2);
+      border: 1px solid rgba(99, 102, 241, 0.5);
+      color: #a5b4fc;
+      -webkit-text-fill-color: #a5b4fc;
+    }
+
+    .subtitle {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #9ca3af;
+      margin-bottom: 22px;
+      font-weight: 500;
+    }
+
+    /* Progress & Status */
+    .progress-bar-container {
+      width: 100%;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+      position: relative;
+      margin-bottom: 14px;
+    }
+
+    .progress-bar-shimmer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 45%;
+      background: linear-gradient(90deg, transparent, #6366f1, #06b6d4, #a855f7, transparent);
+      border-radius: 999px;
+      animation: shimmer 1.6s ease-in-out infinite;
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.8);
+    }
+
+    .status-text {
+      font-size: 12.5px;
+      font-weight: 500;
+      color: #cbd5e1;
+      letter-spacing: 0.2px;
+      transition: all 0.3s ease;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(0.85); opacity: 0.8; }
+      50% { transform: scale(1.15); opacity: 0.2; }
+      100% { transform: scale(0.85); opacity: 0.8; }
+    }
+
+    @keyframes glow {
+      0% { transform: scale(0.92); opacity: 0.8; }
+      100% { transform: scale(1.08); opacity: 1; }
+    }
+
+    @keyframes shimmer {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(320%); }
+    }
+  </style>
+</head>
+<body>
+  <div class="glow-backdrop"></div>
+  <div class="container">
+    <div class="logo-container">
+      <div class="pulse-ring-2"></div>
+      <div class="pulse-ring"></div>
+      <div class="spinner-disc"></div>
+      <div class="center-orb"></div>
+    </div>
+
+    <div class="brand-title">
+      IRIS AI
+      <span class="version-pill">v2.4.5</span>
+    </div>
+    <div class="subtitle">Multimodal Gaze-Voice Assistant</div>
+
+    <div class="progress-bar-container">
+      <div class="progress-bar-shimmer"></div>
+    </div>
+
+    <div id="status-text" class="status-text">Initializing IRIS AI v2.4.5...</div>
+  </div>
+
+  <script>
+    const statuses = [
+      "Initializing IRIS AI v2.4.5...",
+      "Starting Win32 OS Cursor Engine...",
+      "Loading Offline Whisper Voice Pipeline...",
+      "Preparing Multimodal Gaze-Voice Fusion...",
+      "Connecting to Desktop Interface..."
+    ];
+    let idx = 0;
+    const el = document.getElementById("status-text");
+    setInterval(() => {
+      idx = (idx + 1) % statuses.length;
+      if (el) el.textContent = statuses[idx];
+    }, 2500);
+  </script>
+</body>
+</html>

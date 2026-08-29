@@ -204,20 +204,38 @@ class BackendManager {
   }
 
   /**
-   * Poll health endpoint until healthy or timeout (up to 60 seconds for cold-start unpacking).
+   * Poll health endpoint with adaptive exponential backoff until healthy, SERVER_READY received, or timeout.
+   * Accommodates cold-start PyInstaller unpacks, Windows Defender scans, and disk latency.
    */
-  async waitForHealth(timeoutMs = 60000, intervalMs = 200) {
-    this.setStatus("connecting", "Waiting for backend health check (cold-start initialization)...");
+  async waitForHealth(timeoutMs = 15000, initialIntervalMs = 300) {
+    this.setStatus("connecting", "Initializing IRIS AI v2.4.5 (checking health)...");
     const startTime = Date.now();
+    let currentInterval = initialIntervalMs;
 
     while (Date.now() - startTime < timeoutMs) {
+      // 1. Check if backend health endpoint is 200 OK
       const { online, iris } = await this.checkHealthOnce();
       if (online && iris) {
+        console.log(`[ELECTRON] Backend health check passed in ${Date.now() - startTime}ms.`);
         return true;
       }
-      await new Promise((r) => setTimeout(r, intervalMs));
+
+      // 2. If SERVER_READY signal received, immediately re-verify health
+      if (this.serverReady) {
+        const verify = await this.checkHealthOnce();
+        if (verify.online && verify.iris) {
+          console.log(`[ELECTRON] Backend confirmed online after SERVER_READY in ${Date.now() - startTime}ms.`);
+          return true;
+        }
+      }
+
+      await new Promise((r) => setTimeout(r, currentInterval));
+      currentInterval = Math.min(1000, Math.floor(currentInterval * 1.25));
     }
-    return false;
+
+    // Final attempt before returning false
+    const finalCheck = await this.checkHealthOnce();
+    return Boolean(finalCheck.online && finalCheck.iris);
   }
 
   /**
@@ -228,6 +246,7 @@ class BackendManager {
       return true;
     }
     this.isStarting = true;
+    this.serverReady = false;
     this.setStatus("starting", "Checking backend availability...");
 
     try {
@@ -268,7 +287,7 @@ class BackendManager {
         cwd: backendDir,
         windowsHide: true,
         detached: false,
-        stdio: "ignore",
+        stdio: ["ignore", "pipe", "pipe"],
         env: {
           ...process.env,
           PYTHONPATH: backendDir,
@@ -281,6 +300,28 @@ class BackendManager {
       this.ownedByElectron = true;
       console.log(`[ELECTRON] Backend spawned with PID=${this.childProcess.pid}`);
 
+      if (this.childProcess.stdout) {
+        this.childProcess.stdout.on("data", (chunk) => {
+          const text = chunk.toString();
+          console.log(`[BACKEND STDOUT] ${text.trim()}`);
+          if (text.includes("SERVER_READY")) {
+            console.log("[ELECTRON] Caught SERVER_READY signal from backend stdout!");
+            this.serverReady = true;
+          }
+        });
+      }
+
+      if (this.childProcess.stderr) {
+        this.childProcess.stderr.on("data", (chunk) => {
+          const text = chunk.toString();
+          console.log(`[BACKEND STDERR] ${text.trim()}`);
+          if (text.includes("SERVER_READY")) {
+            console.log("[ELECTRON] Caught SERVER_READY signal from backend stderr!");
+            this.serverReady = true;
+          }
+        });
+      }
+
       this.childProcess.on("exit", (code, signal) => {
         console.log(`[ELECTRON] Backend process PID=${this.childProcess?.pid || "unknown"} exited with code ${code}, signal ${signal}`);
         const wasOwned = this.ownedByElectron;
@@ -292,12 +333,12 @@ class BackendManager {
         }
       });
 
-      // 4. Wait for health check with retries up to 60 seconds
-      const isHealthy = await this.waitForHealth(60000, 200);
+      // 4. Wait for health check with retries up to 15 seconds
+      const isHealthy = await this.waitForHealth(15000, 300);
       if (!isHealthy) {
-        this.setStatus("error", "IRIS backend failed to respond within 60 seconds.");
+        this.setStatus("error", "IRIS backend failed to respond within 15 seconds.");
         this.killBackend();
-        throw new Error("IRIS backend failed to respond within 60 seconds.");
+        throw new Error("IRIS backend failed to respond within 15 seconds.");
       }
 
       console.log("[ELECTRON] IRIS backend is online and healthy.");

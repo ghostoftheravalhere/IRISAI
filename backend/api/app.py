@@ -68,6 +68,9 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, "lifecycle_manager"):
         app.state.lifecycle_manager.startup()
 
+    print("SERVER_READY", flush=True)
+    logger.info("SERVER_READY: IRIS AI FastAPI backend initialized and listening.")
+
     yield
 
     # Ensure webcam and voice streams are released cleanly upon server shutdown.

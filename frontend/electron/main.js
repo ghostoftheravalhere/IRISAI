@@ -13,8 +13,53 @@ const BackendManager = require("./backendManager");
 
 const isDev = !app.isPackaged;
 const backendManager = new BackendManager();
+let splashWindow = null;
 let mainWindow = null;
 let isQuitting = false;
+
+function createSplashWindow() {
+  const possibleSplashPaths = [
+    path.join(__dirname, "splash.html"),
+    path.join(__dirname, "../splash.html"),
+    path.join(process.resourcesPath, "splash.html"),
+  ];
+
+  const splashPath = possibleSplashPaths.find((p) => p && fs.existsSync(p)) || path.join(__dirname, "splash.html");
+
+  splashWindow = new BrowserWindow({
+    width: 480,
+    height: 340,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    center: true,
+    alwaysOnTop: true,
+    backgroundColor: "#08090e",
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  splashWindow.loadFile(splashPath).catch(() => {});
+  splashWindow.once("ready-to-show", () => {
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.show();
+    }
+  });
+
+  splashWindow.on("closed", () => {
+    splashWindow = null;
+  });
+}
+
+function closeSplashWindow() {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    splashWindow.close();
+    splashWindow = null;
+  }
+}
 
 // Production Logging Helper
 function logProd(msg) {
@@ -48,11 +93,20 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: "#0a0a0f",
+    show: false,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
     },
+  });
+
+  // Reveal main window and close splash screen once renderer is loaded
+  mainWindow.once("ready-to-show", () => {
+    closeSplashWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
   });
 
   // Remove default menu bar
@@ -65,6 +119,10 @@ function createWindow() {
 
   mainWindow.webContents.on("did-finish-load", () => {
     logProd(`[PROD] renderer load success: ${mainWindow.webContents.getURL()}`);
+    closeSplashWindow();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
   });
 
   mainWindow.webContents.on("did-fail-load", (event, errorCode, errorDescription, validatedURL) => {
@@ -152,6 +210,7 @@ backendManager.onStatusChange = (statusState) => {
 
 function cleanupAndKillBackend() {
   try {
+    closeSplashWindow();
     backendManager.killBackend();
   } catch (e) {
     console.error("[ELECTRON] Error in cleanupAndKillBackend:", e);
@@ -159,6 +218,8 @@ function cleanupAndKillBackend() {
 }
 
 app.whenReady().then(async () => {
+  createSplashWindow();
+
   try {
     await backendManager.start();
   } catch (err) {
