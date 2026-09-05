@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from backend.core.config.settings import Settings
 from backend.core.events.bus import EventBus
-from backend.platform.runtime_events import ConfigurationValidationErrorEvent
+from backend.sys_platform.runtime_events import ConfigurationValidationErrorEvent
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)

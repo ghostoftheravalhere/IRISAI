@@ -702,20 +702,33 @@ export default function Dashboard() {
               <div>Frontend: <span style={{ color: "#34d399" }}>ONLINE</span></div>
               <div>Backend: <span style={{ color: health?.status !== "OFFLINE" ? "#34d399" : "#f87171" }}>{health?.status || "HEALTHY"}</span></div>
               <div>Backend Version: <span style={{ color: "#60a5fa" }}>{health?.version || "2.4.5"}</span></div>
-              <div>Backend Executable: <span style={{ color: "#60a5fa" }}>{health?.executable ? health.executable.split(/[\/\\]/).pop() : "iris_backend.exe"}</span></div>
+              <div>Backend Executable: <span style={{ color: "#60a5fa" }}>{health?.executable ? health.executable.split(/[\/\\]/).pop() : "backend.exe"}</span></div>
               <div>App Resolver: <span style={{ color: "#34d399" }}>{health?.resolver || "universal_v2.4.5"}</span></div>
               <div>API Target: <span style={{ color: "#60a5fa" }}>http://127.0.0.1:8000</span></div>
               <div>WebSocket Target: <span style={{ color: "#60a5fa" }}>ws://127.0.0.1:8000/ws/events</span></div>
               <div>Microphone Input: <span style={{ color: "#34d399" }}>Ready ({micStatus})</span></div>
               <div>Voice Input: <span style={{ color: "#34d399" }}>Active ({voiceState})</span></div>
               <div>Voice Output: <span style={{ color: "#fbbf24" }}>Disabled (Visual Feedback - V2.4 Submission Scope)</span></div>
-              <div>Person Recognition: <span style={{ color: "#34d399" }}>{worldSnapshot?.person?.name || "Rahul (Active)"}</span></div>
+              <div>Person Recognition: <span style={{ color: worldSnapshot?.person?.name ? "#34d399" : "#fbbf24" }}>{worldSnapshot?.person?.name || "Disabled (Coming in v2.6)"}</span></div>
               <div>Eye Gaze System: <span style={{ color: "#34d399" }}>{calibStatus === "CALIBRATION_COMPLETE" ? "CALIBRATED" : "ACTIVE"}</span></div>
               <div>Cursor Control: <span style={{ color: cursorControlActive ? "#34d399" : "#fbbf24" }}>{cursorControlActive ? "ACTIVE" : calibStatus === "CALIBRATION_COMPLETE" ? "READY" : "DISABLED"}</span></div>
               <div>Blink Gesture Detection: <span style={{ color: "#34d399" }}>ACTIVE</span></div>
               <div>WorldModel Context: <span style={{ color: "#34d399" }}>ONLINE</span></div>
             </div>
-            <div style={{ textAlign: "right" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <button
+                onClick={async () => {
+                  if (window.irisAPI && (typeof window.irisAPI.startBackend === "function" || typeof window.irisAPI.restartBackend === "function")) {
+                    const fn = window.irisAPI.startBackend || window.irisAPI.restartBackend;
+                    await fn();
+                  } else {
+                    IRISApiClient.getHealth();
+                  }
+                }}
+                style={{ padding: "0.5rem 1rem", borderRadius: "8px", background: "#312e81", border: "1px solid #4f46e5", color: "#e0e7ff", fontWeight: "600", cursor: "pointer", fontSize: "0.8rem" }}
+              >
+                🔄 Restart Backend Process
+              </button>
               <button onClick={() => setShowDiagnostics(false)} style={{ padding: "0.5rem 1.25rem", borderRadius: "8px", background: "#4f46e5", border: "none", color: "#fff", fontWeight: "600", cursor: "pointer" }}>
                 Close Diagnostics
               </button>

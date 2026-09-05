@@ -8,12 +8,12 @@ from backend.api.app import create_app
 from backend.config.settings import settings
 from backend.core.di.container import build_container
 from backend.core.events.bus import EventBus
-from backend.platform.config_validator import ConfigurationValidator
-from backend.platform.diagnostics import DiagnosticsService
-from backend.platform.health import HealthMonitor, HealthState
-from backend.platform.lifecycle import LifecycleManager, RecoveryManager
-from backend.platform.metrics import MetricsRegistry, PerformanceMonitor
-from backend.platform.runtime_events import (
+from backend.sys_platform.config_validator import ConfigurationValidator
+from backend.sys_platform.diagnostics import DiagnosticsService
+from backend.sys_platform.health import HealthMonitor, HealthState
+from backend.sys_platform.lifecycle import LifecycleManager, RecoveryManager
+from backend.sys_platform.metrics import MetricsRegistry, PerformanceMonitor
+from backend.sys_platform.runtime_events import (
     HealthStatusChangedEvent,
     RuntimeRecoveryTriggeredEvent,
 )

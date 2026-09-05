@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("irisAPI", {
   platform: process.platform,
   getBackendStatus: () => ipcRenderer.invoke("backend:get-status"),
   restartBackend: () => ipcRenderer.invoke("backend:restart"),
+  startBackend: () => ipcRenderer.invoke("backend:start"),
   quitApp: () => ipcRenderer.invoke("app:quit"),
   setFullScreen: (flag) => ipcRenderer.invoke("window:set-fullscreen", flag),
   maximize: () => ipcRenderer.invoke("window:maximize"),

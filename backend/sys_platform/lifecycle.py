@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from threading import RLock
 from backend.core.events.bus import EventBus
-from backend.platform.runtime_events import RuntimeRecoveryTriggeredEvent, ShutdownInitiatedEvent
+from backend.sys_platform.runtime_events import RuntimeRecoveryTriggeredEvent, ShutdownInitiatedEvent
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)

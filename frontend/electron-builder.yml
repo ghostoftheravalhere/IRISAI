@@ -1,7 +1,8 @@
 appId: com.irisai.desktop
 productName: IRIS AI
+compression: store
 directories:
-  output: dist
+  output: release
 files:
   - dist/**/*
   - electron/**/*

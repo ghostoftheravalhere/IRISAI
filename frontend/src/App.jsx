@@ -15,6 +15,12 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
+    // 0. Apply Saved Theme
+    try {
+      const savedTheme = localStorage.getItem("iris_theme") || "dark";
+      document.documentElement.className = "theme-" + savedTheme;
+    } catch (e) {}
+
     // 1. Electron IPC Listener
     if (window.irisAPI && typeof window.irisAPI.getBackendStatus === "function") {
       window.irisAPI.getBackendStatus().then((state) => {
@@ -57,6 +63,33 @@ export default function App() {
     };
   }, []);
 
+  const handleRetry = async () => {
+    if (window.irisAPI && (typeof window.irisAPI.startBackend === "function" || typeof window.irisAPI.restartBackend === "function")) {
+      setBackendState({
+        status: "starting",
+        message: "Re-spawning backend process (surviving Defender scan)...",
+      });
+      try {
+        const startFn = window.irisAPI.startBackend || window.irisAPI.restartBackend;
+        const res = await startFn();
+        if (!res?.success && res?.error) {
+          setBackendState({
+            status: "error",
+            message: `Launch failed: ${res.error}`,
+          });
+        }
+      } catch (e) {
+        console.error("[FRONTEND] Failed to restart backend:", e);
+      }
+    } else {
+      setBackendState({
+        status: "connecting",
+        message: "Re-checking local backend gateway...",
+      });
+      IRISApiClient.getHealth();
+    }
+  };
+
   return (
     <HashRouter>
       {backendState.status !== "ready" && (
@@ -76,7 +109,7 @@ export default function App() {
         >
           <span>⚡ Backend Status: {backendState.status.toUpperCase()} ({backendState.message})</span>
           <button
-            onClick={() => IRISApiClient.getHealth()}
+            onClick={handleRetry}
             style={{
               background: "#312e81",
               border: "none",
@@ -87,7 +120,7 @@ export default function App() {
               cursor: "pointer",
             }}
           >
-            Retry Check
+            ⚡ Retry Backend Launch
           </button>
         </div>
       )}

@@ -6,46 +6,33 @@ Run from the repo root:  python -m backend.main
 import sys
 import io
 import os
+import types
 
 if sys.stdout is None:
     sys.stdout = io.StringIO()
 if sys.stderr is None:
     sys.stderr = io.StringIO()
 
-if getattr(sys, "frozen", False):
-    bundle_dir = getattr(sys, "_MEIPASS", os.path.dirname(__file__))
-    if bundle_dir not in sys.path:
-        sys.path.insert(0, bundle_dir)
-    try:
-        import api
-        import agent
-        import automation
-        import brain
-        import config
-        import core
-        import eye_tracking
-        import perception
-        import utils
-        import voice
-        import types
-        sys.modules["backend"] = types.ModuleType("backend")
-        sys.modules["backend.api"] = api
-        sys.modules["backend.agent"] = agent
-        sys.modules["backend.automation"] = automation
-        sys.modules["backend.brain"] = brain
-        sys.modules["backend.config"] = config
-        sys.modules["backend.core"] = core
-        sys.modules["backend.eye_tracking"] = eye_tracking
-        sys.modules["backend.perception"] = perception
-        sys.modules["backend.utils"] = utils
-        sys.modules["backend.voice"] = voice
-    except Exception as e:
-        pass
-else:
-    # Allow running as `python main.py` from inside backend/ or from workspace root
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+base_dir = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+if base_dir not in sys.path:
+    sys.path.insert(0, base_dir)
+
+if not getattr(sys, "frozen", False):
+    repo_root = os.path.abspath(os.path.join(base_dir, ".."))
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
+
+# If "backend" is not in sys.modules, configure package path for PyInstaller PYZ resolution
+backend_pkg_path = os.path.join(base_dir, "backend")
+if "backend" not in sys.modules:
+    pkg = types.ModuleType("backend")
+    pkg.__path__ = [backend_pkg_path, base_dir]
+    sys.modules["backend"] = pkg
+elif hasattr(sys.modules["backend"], "__path__"):
+    if backend_pkg_path not in sys.modules["backend"].__path__:
+        sys.modules["backend"].__path__.insert(0, backend_pkg_path)
+    if base_dir not in sys.modules["backend"].__path__:
+        sys.modules["backend"].__path__.append(base_dir)
 
 import uvicorn
 try:

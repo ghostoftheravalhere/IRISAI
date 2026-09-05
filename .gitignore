@@ -264,3 +264,8 @@ Thumbs.db
 M.txt
 iris_v4_general_user_flowchart.png
 iris_v4_technical_architecture_flowchart.png
+
+# Build artifacts & Scratch scripts
+frontend/resources/
+scratch/
+

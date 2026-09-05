@@ -164,8 +164,8 @@ def test_16_camera_service_idempotent_start_stop():
 
 # 17. Perception health probes and diagnostics endpoint snapshot
 def test_17_perception_diagnostics_snapshot():
-    from backend.platform.diagnostics import DiagnosticsService
-    from backend.platform.health import HealthMonitor, HealthState
+    from backend.sys_platform.diagnostics import DiagnosticsService
+    from backend.sys_platform.health import HealthMonitor, HealthState
     monitor = HealthMonitor()
     monitor.register_probe("camera", lambda: (HealthState.HEALTHY, {"running": True}))
     monitor.register_probe("microphone", lambda: (HealthState.HEALTHY, {"status": "On"}))
@@ -207,7 +207,7 @@ def test_19_camera_mic_perception_coexistence():
 
 # 20. LifecycleManager startup and shutdown hooks execution
 def test_20_lifecycle_manager_hooks():
-    from backend.platform.lifecycle import LifecycleManager
+    from backend.sys_platform.lifecycle import LifecycleManager
     manager = LifecycleManager()
     started = []
     stopped = []

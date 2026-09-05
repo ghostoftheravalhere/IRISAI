@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 from backend.core.events.bus import EventBus
-from backend.platform.runtime_events import HealthStatusChangedEvent
+from backend.sys_platform.runtime_events import HealthStatusChangedEvent
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)

@@ -165,6 +165,16 @@ ipcMain.handle("backend:get-status", () => {
   return backendManager.getStatusState();
 });
 
+ipcMain.handle("backend:start", async () => {
+  try {
+    backendManager.killBackend();
+    await backendManager.start();
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle("backend:restart", async () => {
   try {
     backendManager.killBackend();
@@ -205,6 +215,15 @@ ipcMain.handle("window:maximize", () => {
 backendManager.onStatusChange = (statusState) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("backend:status-changed", statusState);
+  }
+  if (splashWindow && !splashWindow.isDestroyed() && splashWindow.webContents) {
+    const msg = statusState?.message || "Initializing IRIS AI...";
+    splashWindow.webContents.executeJavaScript(`
+      (() => {
+        const el = document.getElementById("status-text");
+        if (el) el.textContent = ${JSON.stringify(msg)};
+      })()
+    `).catch(() => {});
   }
 };
 

@@ -8,13 +8,25 @@ import { IRISApiClient } from "../services/api_client";
 export default function SettingsModal({ isOpen, onClose }) {
   const [activeTab, setActiveTab] = useState("voice");
   const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem("iris_theme") || "dark";
+    } catch (e) {
+      return "dark";
+    }
+  });
   const [privacyLevel, setPrivacyLevel] = useState("strict_local");
   const [osCursorActive, setOsCursorActive] = useState(false);
   const [cursorStatus, setCursorStatus] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
+      try {
+        const savedTheme = localStorage.getItem("iris_theme") || "dark";
+        setTheme(savedTheme);
+        document.documentElement.className = "theme-" + savedTheme;
+      } catch (e) {}
+
       IRISApiClient.getCursorStatus().then((status) => {
         if (status) {
           setCursorStatus(status);
@@ -23,6 +35,15 @@ export default function SettingsModal({ isOpen, onClose }) {
       });
     }
   }, [isOpen, activeTab]);
+
+  const handleThemeChange = (e) => {
+    const nextTheme = e.target.value;
+    setTheme(nextTheme);
+    document.documentElement.className = "theme-" + nextTheme;
+    try {
+      localStorage.setItem("iris_theme", nextTheme);
+    } catch (err) {}
+  };
 
   const handleToggleOsCursor = async (e) => {
     const nextVal = e.target.checked;
@@ -115,7 +136,7 @@ export default function SettingsModal({ isOpen, onClose }) {
             {activeTab === "theme" && (
               <div className={styles.settingGroup}>
                 <label className={styles.label}>Appearance Theme</label>
-                <select className={styles.select} value={theme} onChange={(e) => setTheme(e.target.value)}>
+                <select className={styles.select} value={theme} onChange={handleThemeChange}>
                   <option value="dark">Glassmorphism Dark (Default)</option>
                   <option value="oled">OLED Deep Black</option>
                   <option value="cyberpunk">Cyberpunk Neon</option>

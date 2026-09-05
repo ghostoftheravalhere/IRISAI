@@ -37,11 +37,11 @@ from backend.eye_tracking.gaze_service import EyeGazeService
 from backend.eye_tracking.gesture_interpreter_service import GestureInterpreterService
 from backend.memory.session_memory import SessionMemory
 from backend.perception.ambiguity_engine import AmbiguityEngine
-from backend.platform.config_validator import ConfigurationValidator
-from backend.platform.diagnostics import DiagnosticsService
-from backend.platform.health import HealthMonitor, HealthState
-from backend.platform.lifecycle import LifecycleManager, RecoveryManager
-from backend.platform.metrics import MetricsRegistry, PerformanceMonitor
+from backend.sys_platform.config_validator import ConfigurationValidator
+from backend.sys_platform.diagnostics import DiagnosticsService
+from backend.sys_platform.health import HealthMonitor, HealthState
+from backend.sys_platform.lifecycle import LifecycleManager, RecoveryManager
+from backend.sys_platform.metrics import MetricsRegistry, PerformanceMonitor
 from backend.utils.logger import get_logger
 from backend.voice.command_parser import IntentParserService
 from backend.voice.pipeline import VoiceCommandPipeline

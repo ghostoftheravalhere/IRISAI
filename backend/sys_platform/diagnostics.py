@@ -5,8 +5,8 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from backend.platform.health import HealthMonitor
-from backend.platform.metrics import MetricsRegistry
+from backend.sys_platform.health import HealthMonitor
+from backend.sys_platform.metrics import MetricsRegistry
 
 
 class DiagnosticsService:
@@ -46,7 +46,7 @@ class DiagnosticsService:
             metrics_data = self._metrics_registry.get_metrics_summary()
 
         return {
-            "uptime_seconds": self.uptime_seconds(),
+            "uptime_seconds": self.uptime_seconds,
             "overall_health": overall_health,
             "components": health_data,
             "metrics": metrics_data,

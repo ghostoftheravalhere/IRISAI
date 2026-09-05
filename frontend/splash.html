@@ -220,17 +220,19 @@
 
   <script>
     const statuses = [
-      "Initializing IRIS AI v2.4.5...",
+      "Initializing AI engine & dependencies...",
+      "Windows Defender security scan in progress...",
       "Starting Win32 OS Cursor Engine...",
       "Loading Offline Whisper Voice Pipeline...",
       "Preparing Multimodal Gaze-Voice Fusion...",
+      "Binding Local Fast-API Gateway (127.0.0.1:8000)...",
       "Connecting to Desktop Interface..."
     ];
     let idx = 0;
     const el = document.getElementById("status-text");
     setInterval(() => {
       idx = (idx + 1) % statuses.length;
-      if (el) el.textContent = statuses[idx];
+      if (el && !el.dataset.custom) el.textContent = statuses[idx];
     }, 2500);
   </script>
 </body>
