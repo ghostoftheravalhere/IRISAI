@@ -231,6 +231,60 @@ class VoiceCommandPipeline:
                         transcript=text,
                     )
 
+                if executable_intent.intent == VoiceIntentType.DOCUMENT_SEARCH:
+                    query = executable_intent.query or ""
+                    from backend.features.document_search import document_search_service
+                    if self._speech_output_manager is not None:
+                        document_search_service.set_speech_manager(self._speech_output_manager)
+                    if self._event_bus is not None:
+                        document_search_service.set_event_bus(self._event_bus)
+                    if self._voice_service is not None:
+                        self._voice_service.set_busy(True)
+                        document_search_service.set_voice_service(self._voice_service)
+
+                    document_search_service.search_async(query, acknowledge=False)
+                    spoken_msg = f"Searching documents for {query}."
+                    if self._event_bus:
+                        self._event_bus.publish(
+                            AutomationExecutedEvent(
+                                intent=executable_intent.intent.value,
+                                action=executable_intent.intent.value,
+                                success=True,
+                                execution_status=spoken_msg,
+                            )
+                        )
+                    self._speak_response(spoken_msg)
+                    return VoicePipelineResult(
+                        intent=executable_intent.intent.value,
+                        message=spoken_msg,
+                        success=True,
+                        transcript=text,
+                    )
+
+                if executable_intent.intent == VoiceIntentType.OPEN_FILE:
+                    from backend.features.document_search import document_search_service
+                    if self._speech_output_manager is not None:
+                        document_search_service.set_speech_manager(self._speech_output_manager)
+
+                    success = document_search_service.open_latest_top_result()
+                    spoken_msg = "Opening file." if success else "No document search results to open."
+                    if self._event_bus:
+                        self._event_bus.publish(
+                            AutomationExecutedEvent(
+                                intent=executable_intent.intent.value,
+                                action=executable_intent.intent.value,
+                                success=success,
+                                execution_status=spoken_msg,
+                            )
+                        )
+                    self._speak_response(spoken_msg)
+                    return VoicePipelineResult(
+                        intent=executable_intent.intent.value,
+                        message=spoken_msg,
+                        success=success,
+                        transcript=text,
+                    )
+
                 automation_result = self._automation_dispatcher.dispatch(executable_intent)
                 logger.info(
                     "ACTION: Voice action executed: %s (success: %s, message: '%s')",

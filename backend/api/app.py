@@ -41,11 +41,24 @@ from backend.api.routes import (
 from backend.config.settings import settings
 from backend.core.di.container import AppContainer, build_container
 from backend.utils.logger import get_logger
+from pydantic import BaseModel
 
 logger = get_logger(__name__)
 
 _recent_event_history: list[dict] = []
 _global_active_websockets: list[asyncio.Queue] = []
+
+
+def broadcast_ws_event(event_data: dict[str, Any]) -> None:
+    """Broadcast an event payload to all connected WebSockets and command history."""
+    _recent_event_history.append(event_data)
+    if len(_recent_event_history) > 100:
+        _recent_event_history.pop(0)
+    for q in list(_global_active_websockets):
+        try:
+            q.put_nowait(event_data)
+        except Exception:
+            pass
 
 
 @asynccontextmanager
@@ -70,6 +83,12 @@ async def lifespan(app: FastAPI):
 
     print("SERVER_READY", flush=True)
     logger.info("SERVER_READY: IRIS AI FastAPI backend initialized and listening.")
+
+    try:
+        from backend.services.preflight_service import warmup_microphone_background
+        warmup_microphone_background()
+    except Exception:
+        pass
 
     yield
 
@@ -106,6 +125,7 @@ def create_app() -> FastAPI:
     app.include_router(camera.router)
     app.include_router(camera.router, prefix="/api/v1")
     app.include_router(eye.router, prefix="/eye")
+    app.include_router(eye.router, prefix="/api/eye")
     app.include_router(eye.router, prefix="/api/v1/eye")
     app.include_router(cursor_routes.router, prefix="/api/cursor")
     app.include_router(cursor_routes.router, prefix="/cursor")
@@ -142,7 +162,7 @@ def create_app() -> FastAPI:
             "version": settings.APP_VERSION,
             "executable": sys.executable,
             "is_frozen": getattr(sys, "frozen", False),
-            "resolver": "universal_v2.4.5",
+            "resolver": "universal_v2.5.0",
         }
         if hasattr(app.state, "diagnostics_service"):
             try:
@@ -188,6 +208,38 @@ def create_app() -> FastAPI:
     async def get_event_history():
         """Return recent EventBus history for Command Log state synchronization."""
         return {"events": _recent_event_history[-50:]}
+
+    @app.get("/api/v1/documents/search")
+    @app.get("/api/documents/search")
+    async def search_documents(query: str):
+        """Search local documents for query string."""
+        from backend.features.document_search import document_search_service
+        results = document_search_service.searcher.search(query)
+        return {
+            "query": query,
+            "count": len(results),
+            "results": results,
+            "top_result": results[0] if results else None,
+        }
+
+    class OpenDocumentRequest(BaseModel):
+        file_path: str
+
+    @app.post("/api/v1/documents/open")
+    @app.post("/api/documents/open")
+    async def open_document_endpoint(payload: OpenDocumentRequest):
+        """Launch document with system default viewer."""
+        from backend.features.document_search import open_document
+        success = open_document(payload.file_path)
+        return {"success": success, "file_path": payload.file_path}
+
+    @app.post("/api/v1/documents/open-latest")
+    @app.post("/api/documents/open-latest")
+    async def open_latest_document_endpoint():
+        """Launch top document from latest search results."""
+        from backend.features.document_search import document_search_service
+        success = document_search_service.open_latest_top_result()
+        return {"success": success}
 
     @app.websocket("/ws/events")
     async def websocket_events_endpoint(websocket: WebSocket):
@@ -251,6 +303,14 @@ def _attach_container(app: FastAPI, container: AppContainer) -> None:
         gaze_voice_fusion.set_cursor_controller(container.cursor_controller)
     if getattr(container, "voice", None) is not None:
         container.voice.set_on_speech_start(gaze_voice_fusion.handle_speech_start)
+
+    from backend.features.document_search import document_search_service
+    document_search_service.set_speech_manager(app.state.speech_output_manager)
+    document_search_service.set_broadcast_callback(broadcast_ws_event)
+    if container.event_bus is not None:
+        document_search_service.set_event_bus(container.event_bus)
+    if getattr(container, "voice", None) is not None:
+        document_search_service.set_voice_service(container.voice)
 
     def _global_domain_event_handler(event: Any):
         try:

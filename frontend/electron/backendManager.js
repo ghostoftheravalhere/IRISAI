@@ -200,6 +200,10 @@ class BackendManager {
       if (fs.existsSync(altDir)) {
         return altDir;
       }
+      const execPath = this.getBackendExecutable();
+      if (execPath && fs.existsSync(execPath)) {
+        return path.dirname(execPath);
+      }
       return primaryDir;
     }
 
@@ -331,6 +335,18 @@ class BackendManager {
         backendDir = this.getBackendDir();
       }
 
+      if (!fs.existsSync(backendDir) && fs.existsSync(backendExec)) {
+        backendDir = path.dirname(backendExec);
+      }
+
+      if (!fs.existsSync(backendExec)) {
+        const errorMsg = `Executable discovery failure: Packaged backend executable not found at "${backendExec}"`;
+        logBackend(`CRITICAL: ${errorMsg}`);
+        console.error(`[ELECTRON CRITICAL] ${errorMsg}`);
+        this.setStatus("error", errorMsg);
+        throw new Error(errorMsg);
+      }
+
       logBackend(`[PRODUCTION SPAWN] file: "${backendExec}" (exists=${fs.existsSync(backendExec)})`);
       logBackend(`[PRODUCTION SPAWN] cwd (explicit): "${backendDir}" (exists=${fs.existsSync(backendDir)})`);
     } else {
@@ -338,6 +354,18 @@ class BackendManager {
       backendDir = this.getBackendDir();
       const isBinary = backendExec.endsWith(".exe") && !backendExec.toLowerCase().includes("python");
       args = isBinary ? [] : ["main.py"];
+
+      if (!fs.existsSync(backendDir) && fs.existsSync(backendExec)) {
+        backendDir = path.dirname(backendExec);
+      }
+
+      if (isBinary && !fs.existsSync(backendExec)) {
+        const errorMsg = `Executable discovery failure: Backend binary not found at "${backendExec}"`;
+        logBackend(`CRITICAL: ${errorMsg}`);
+        console.error(`[ELECTRON CRITICAL] ${errorMsg}`);
+        this.setStatus("error", errorMsg);
+        throw new Error(errorMsg);
+      }
 
       logBackend(`[DEV SPAWN] file: "${backendExec}" (exists=${fs.existsSync(backendExec)})`);
       logBackend(`[DEV SPAWN] cwd: "${backendDir}" (exists=${fs.existsSync(backendDir)})`);
@@ -468,8 +496,10 @@ class BackendManager {
             const parts = line.trim().split(/\s+/);
             const pid = parts[parts.length - 1];
             if (pid && !isNaN(pid) && parseInt(pid, 10) > 0 && parseInt(pid, 10) !== process.pid) {
-              logBackend(`Terminating lingering port 8000 process PID ${pid}...`);
-              execSync(`taskkill /F /PID ${pid} /T`);
+              try {
+                logBackend(`Terminating lingering port 8000 process PID ${pid}...`);
+                execSync(`taskkill /F /PID ${pid} /T`, { stdio: "ignore" });
+              } catch (e) {}
             }
           }
         } catch (e) {}
@@ -506,6 +536,8 @@ class BackendManager {
    * Forcefully kill the backend process tree on Windows using taskkill /pid /T /F.
    */
   killBackend() {
+    const wasOwned = Boolean(this.ownedByElectron || this.isPackaged());
+
     if (this.childProcess && this.childProcess.pid) {
       const pid = this.childProcess.pid;
       logBackend(`Forcefully killing backend process tree PID ${pid}...`);
@@ -522,8 +554,8 @@ class BackendManager {
       this.ownedByElectron = false;
     }
 
-    // Clean up any lingering port 8000 process
-    if (process.platform === "win32") {
+    // Clean up any lingering port 8000 process only if packaged or owned by Electron
+    if (process.platform === "win32" && wasOwned) {
       try {
         const netstat = execSync("netstat -ano -p tcp | findstr :8000", { encoding: "utf8" });
         const lines = netstat.trim().split("\n");
@@ -531,8 +563,10 @@ class BackendManager {
           const parts = line.trim().split(/\s+/);
           const pid = parts[parts.length - 1];
           if (pid && !isNaN(pid) && parseInt(pid, 10) > 0 && parseInt(pid, 10) !== process.pid) {
-            logBackend(`Cleaning up port 8000 listener PID ${pid}...`);
-            execSync(`taskkill /F /PID ${pid} /T`);
+            try {
+              logBackend(`Cleaning up port 8000 listener PID ${pid}...`);
+              execSync(`taskkill /F /PID ${pid} /T`, { stdio: "ignore" });
+            } catch (e) {}
           }
         }
       } catch (e) {}

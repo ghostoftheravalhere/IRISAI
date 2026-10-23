@@ -6,6 +6,7 @@ import WorkflowViewer from "../components/WorkflowViewer";
 import RuntimeDashboard from "../components/RuntimeDashboard";
 import SettingsModal from "../components/SettingsModal";
 import SystemTray from "../components/SystemTray";
+
 import { IRISApiClient, IRISWebSocketClient } from "../services/api_client";
 import styles from "./Dashboard.module.css";
 
@@ -38,8 +39,19 @@ export default function Dashboard() {
   const [calibResultMsg, setCalibResultMsg] = useState("");
   const [isCapturingPoint, setIsCapturingPoint] = useState(false);
   const [cursorControlActive, setCursorControlActive] = useState(false);
+  const [cursorToast, setCursorToast] = useState(null);
+  const cursorToastTimeoutRef = React.useRef(null);
+
+  const showCursorToast = (msg, isError = false) => {
+    if (cursorToastTimeoutRef.current) clearTimeout(cursorToastTimeoutRef.current);
+    setCursorToast({ msg, isError });
+    cursorToastTimeoutRef.current = setTimeout(() => {
+      setCursorToast(null);
+    }, 3500);
+  };
   const [ttsAvailable, setTtsAvailable] = useState(true);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+
 
   // Draggable Calibration Modal State & Handlers
   const [calibCardPos, setCalibCardPos] = useState(null); // { x, y }
@@ -115,6 +127,28 @@ export default function Dashboard() {
     };
   }, [isCalibrating, calibStatus, calibPointIndex]);
 
+  // Hotkey listener: pressing 'C' / 'c' opens the 9-Point Calibration screen
+  useEffect(() => {
+    const handleCalibrationKeyDown = (e) => {
+      const targetTag = e.target?.tagName?.toLowerCase();
+      if (targetTag === "input" || targetTag === "textarea" || e.target?.isContentEditable) {
+        return;
+      }
+
+      if ((e.key === "c" || e.key === "C") && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (!isCalibrating) {
+          e.preventDefault();
+          handleStartCalibration();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleCalibrationKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleCalibrationKeyDown);
+    };
+  }, [isCalibrating]);
+
   // Unified Speech Helper — Speaks aloud via both Renderer WebSpeech & Backend SAPI5
   const speakText = async (text) => {
     if (!text) return;
@@ -150,7 +184,12 @@ export default function Dashboard() {
 
       const vStatus = await IRISApiClient.getVoiceStatus();
       if (vStatus) {
-        setMicStatus(vStatus.microphoneStatus === "On" ? "Ready" : vStatus.microphoneStatus);
+        setMicStatus(vStatus.ready || vStatus.microphoneStatus === "On" || vStatus.microphoneStatus === "Ready" ? "Ready" : vStatus.microphoneStatus);
+      }
+
+      const cInit = await IRISApiClient.getCursorStatus();
+      if (cInit && typeof cInit.enabled === "boolean") {
+        setCursorControlActive(cInit.enabled);
       }
 
       if (!sessionStorage.getItem("iris_greeted")) {
@@ -173,12 +212,18 @@ export default function Dashboard() {
       setCameraStatus(cam && cam.running ? "Ready" : "Unavailable");
       const vStatus = await IRISApiClient.getVoiceStatus();
       if (vStatus) {
-        setMicStatus(vStatus.microphoneStatus === "On" ? "Ready" : vStatus.microphoneStatus);
+        setMicStatus(vStatus.ready || vStatus.microphoneStatus === "On" || vStatus.microphoneStatus === "Ready" ? "Ready" : vStatus.microphoneStatus);
+      }
+      const cStatus = await IRISApiClient.getCursorStatus();
+      if (cStatus && typeof cStatus.enabled === "boolean") {
+        setCursorControlActive(cStatus.enabled);
       }
       const gAuth = await IRISApiClient.getGoogleStatus();
       setGoogleAuth(gAuth);
       const ghAuth = await IRISApiClient.getGitHubStatus();
       setGithubAuth(ghAuth);
+
+
 
       // Synchronize Command Log from Event History
       const histData = await IRISApiClient.getEventHistory();
@@ -276,7 +321,9 @@ export default function Dashboard() {
           ];
         });
 
-        speakText(respText);
+        if (event.intent !== "DOCUMENT_SEARCH" && event.action !== "DOCUMENT_SEARCH") {
+          speakText(respText);
+        }
 
         if (event.intent === "EXIT_APPLICATION" || event.action === "EXIT_APPLICATION") {
           setVoiceState("SHUTTING_DOWN");
@@ -304,6 +351,22 @@ export default function Dashboard() {
             });
           }, delay);
         }
+      } else if (event.event_type === "DOCUMENT_SEARCH_RESULTS") {
+        const respText = event.message || event.execution_status || (event.count > 0 ? `Found matches for '${event.query}' in ${event.count} document(s).` : `No documents found matching '${event.query}'.`);
+        setLastResponseText(respText);
+        setHistory((prev) => {
+          if (prev.length > 0 && prev[0].source === "IRIS" && prev[0].response === respText) {
+            return prev;
+          }
+          return [
+            {
+              source: "IRIS",
+              timestamp: new Date().toLocaleTimeString(),
+              response: respText,
+            },
+            ...prev,
+          ];
+        });
       } else if (event.event_type === "WorkflowStartedEvent") {
         setVoiceState("EXECUTING");
         setActivePlan({
@@ -344,14 +407,18 @@ export default function Dashboard() {
   ];
 
   const handleStartCursorControl = async () => {
+    setCalibResultMsg("Enabling cursor control...");
     const res = await IRISApiClient.enableCursor();
     if (res && (res.error || !res.enabled)) {
-      setCalibResultMsg(`Failed to enable cursor control: ${res.error || "Calibration not ready"}`);
+      const err = res.error || "Calibration not ready";
+      setCalibResultMsg(`Failed to enable cursor control: ${err}`);
       setCursorControlActive(false);
+      showCursorToast(`⚠️ Failed to enable cursor: ${err}`, true);
     } else {
       setCursorControlActive(true);
       setCalibResultMsg("Cursor control is now ACTIVE.");
       speakText("Cursor control active, sir.");
+      showCursorToast("👁️ Cursor control active (Alt+C to pause)");
     }
   };
 
@@ -360,7 +427,40 @@ export default function Dashboard() {
     setCursorControlActive(false);
     setCalibResultMsg("Cursor control is now PAUSED.");
     speakText("Cursor control paused.");
+    showCursorToast("⏸️ Cursor control paused (Alt+C to resume)");
   };
+
+  const handleToggleCursorControl = () => {
+    if (cursorControlActive) {
+      handleStopCursorControl();
+    } else {
+      handleStartCursorControl();
+    }
+  };
+
+  // Global Keyboard Shortcut: Alt+C or F8 to toggle cursor control on/off
+  useEffect(() => {
+    const handleCursorHotkey = (e) => {
+      const targetTag = e.target?.tagName?.toLowerCase();
+      if (targetTag === "input" || targetTag === "textarea" || e.target?.isContentEditable) {
+        return;
+      }
+
+      const isAltC = e.altKey && (e.key === "c" || e.key === "C");
+      const isF8 = e.key === "F8";
+
+      if (isAltC || isF8) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleToggleCursorControl();
+      }
+    };
+
+    window.addEventListener("keydown", handleCursorHotkey, true);
+    return () => {
+      window.removeEventListener("keydown", handleCursorHotkey, true);
+    };
+  }, [cursorControlActive]);
 
   // Voice Controls
   const handleStartVoice = async () => {
@@ -413,6 +513,7 @@ export default function Dashboard() {
 
   // Real 9-Point Camera & Gaze Calibration Workflow
   const handleStartCalibration = async () => {
+
     setIsCalibrating(true);
     setCalibPointIndex(0);
     setCalibResultMsg("");
@@ -523,7 +624,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleCloseCalibration = () => {
+  const handleCloseCalibration = (enableCursorImmediately = false) => {
     setIsCalibrating(false);
     setCalibStatus("IDLE");
     if (window.irisAPI?.setFullScreen) {
@@ -532,6 +633,18 @@ export default function Dashboard() {
       } catch (e) {
         console.warn("[CALIBRATION] Failed to restore non-fullscreen:", e);
       }
+    }
+
+    if (enableCursorImmediately) {
+      handleStartCursorControl();
+    } else {
+      setTimeout(() => {
+        const toggleBtn = document.getElementById("manual-cursor-toggle-btn");
+        if (toggleBtn) {
+          toggleBtn.focus();
+          toggleBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 150);
     }
   };
 
@@ -583,6 +696,8 @@ export default function Dashboard() {
           onToggleMute={() => setIsMicMuted(!isMicMuted)}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onRestartBackend={() => IRISApiClient.getHealth()}
+          cursorControlActive={cursorControlActive}
+          onToggleCursor={handleToggleCursorControl}
         />
       </header>
 
@@ -600,9 +715,46 @@ export default function Dashboard() {
             Eye Tracking: <strong style={{ color: cameraStatus === "Ready" ? "#34d399" : "#9ca3af" }}>● {cameraStatus === "Ready" ? "Active" : "Standby"}</strong>
           </div>
           <div>
+            Cursor Control: <strong style={{ color: cursorControlActive ? "#34d399" : "#fbbf24" }}>● {cursorControlActive ? "Active" : "Paused"}</strong>
+          </div>
+          <div>
             Action Engine: <strong style={{ color: "#34d399" }}>● Ready</strong>
           </div>
         </div>
+
+        {/* Toast Notification Banner for Cursor Toggle / Actions */}
+        {cursorToast && (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              position: "fixed",
+              top: "84px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 10050,
+              background: cursorToast.isError
+                ? "linear-gradient(135deg, rgba(127, 29, 29, 0.95) 0%, rgba(153, 27, 27, 0.95) 100%)"
+                : "linear-gradient(135deg, rgba(6, 78, 59, 0.95) 0%, rgba(4, 120, 87, 0.95) 100%)",
+              border: cursorToast.isError ? "1px solid #ef4444" : "1px solid #10b981",
+              borderRadius: "10px",
+              padding: "0.65rem 1.4rem",
+              color: "#ffffff",
+              fontWeight: "600",
+              fontSize: "0.92rem",
+              boxShadow: cursorToast.isError
+                ? "0 10px 25px rgba(239, 68, 68, 0.4)"
+                : "0 10px 25px rgba(16, 185, 129, 0.4)",
+              backdropFilter: "blur(10px)",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.65rem",
+              pointerEvents: "none",
+            }}
+          >
+            <span>{cursorToast.msg}</span>
+          </div>
+        )}
 
         <VoiceVisualizer voiceState={voiceState} />
         <h2 style={{ color: "#60a5fa", fontSize: "1.25rem", marginTop: "0.75rem", fontWeight: "500" }}>
@@ -646,22 +798,59 @@ export default function Dashboard() {
               🔄 Retry Microphone
             </button>
           )}
-          {calibStatus === "CALIBRATION_COMPLETE" && (
-            <button
-              onClick={cursorControlActive ? handleStopCursorControl : handleStartCursorControl}
+
+          {/* Prominent Manual Cursor Control Toggle Button */}
+          <button
+            id="manual-cursor-toggle-btn"
+            onClick={handleToggleCursorControl}
+            title={cursorControlActive ? "Pause Eye Cursor Control (Alt+C or F8)" : "Start Eye Cursor Control (Alt+C or F8)"}
+            style={{
+              padding: "0.6rem 1.4rem",
+              borderRadius: "8px",
+              border: cursorControlActive ? "1px solid #ef4444" : "1px solid #10b981",
+              background: cursorControlActive
+                ? "linear-gradient(135deg, rgba(239, 68, 68, 0.25) 0%, rgba(185, 28, 28, 0.4) 100%)"
+                : "linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.4) 100%)",
+              color: cursorControlActive ? "#fca5a5" : "#34d399",
+              fontWeight: "700",
+              fontSize: "0.9rem",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.55rem",
+              boxShadow: cursorControlActive
+                ? "0 0 16px rgba(239, 68, 68, 0.35)"
+                : "0 0 16px rgba(16, 185, 129, 0.35)",
+              transition: "all 0.2s ease-in-out",
+            }}
+          >
+            <span
               style={{
-                padding: "0.6rem 1.4rem",
-                borderRadius: "8px",
-                border: cursorControlActive ? "1px solid #10b981" : "1px solid #3b82f6",
-                background: cursorControlActive ? "rgba(16, 185, 129, 0.2)" : "rgba(59, 130, 246, 0.2)",
-                color: cursorControlActive ? "#34d399" : "#60a5fa",
+                width: "9px",
+                height: "9px",
+                borderRadius: "50%",
+                background: cursorControlActive ? "#ef4444" : "#10b981",
+                boxShadow: cursorControlActive ? "0 0 8px #ef4444" : "0 0 8px #10b981",
+                animation: cursorControlActive ? "pulse 1.5s infinite ease-in-out" : "none",
+              }}
+            />
+            <span>
+              {cursorControlActive ? "⏸️ Pause Cursor Control" : "👁️ Start Cursor Control"}
+            </span>
+            <span
+              style={{
+                fontSize: "0.72rem",
+                padding: "2px 6px",
+                borderRadius: "4px",
+                background: "rgba(0, 0, 0, 0.35)",
+                color: cursorControlActive ? "#fca5a5" : "#a7f3d0",
                 fontWeight: "600",
-                cursor: "pointer",
+                border: "1px solid rgba(255, 255, 255, 0.12)",
               }}
             >
-              {cursorControlActive ? "⏹ Stop Cursor Control" : "▶ Start Cursor Control"}
-            </button>
-          )}
+              Alt+C
+            </span>
+          </button>
           <button
             onClick={handleStartCalibration}
             style={{
@@ -701,15 +890,15 @@ export default function Dashboard() {
             <div style={{ background: "#08090e", borderRadius: "8px", padding: "1rem", fontFamily: "monospace", fontSize: "0.85rem", color: "#d1d5db", lineHeight: "1.8", marginBottom: "1.5rem" }}>
               <div>Frontend: <span style={{ color: "#34d399" }}>ONLINE</span></div>
               <div>Backend: <span style={{ color: health?.status !== "OFFLINE" ? "#34d399" : "#f87171" }}>{health?.status || "HEALTHY"}</span></div>
-              <div>Backend Version: <span style={{ color: "#60a5fa" }}>{health?.version || "2.4.5"}</span></div>
+              <div>Backend Version: <span style={{ color: "#60a5fa" }}>{health?.version || "2.5.0"}</span></div>
               <div>Backend Executable: <span style={{ color: "#60a5fa" }}>{health?.executable ? health.executable.split(/[\/\\]/).pop() : "backend.exe"}</span></div>
-              <div>App Resolver: <span style={{ color: "#34d399" }}>{health?.resolver || "universal_v2.4.5"}</span></div>
+              <div>App Resolver: <span style={{ color: "#34d399" }}>{health?.resolver || "universal_v2.5.0"}</span></div>
               <div>API Target: <span style={{ color: "#60a5fa" }}>http://127.0.0.1:8000</span></div>
               <div>WebSocket Target: <span style={{ color: "#60a5fa" }}>ws://127.0.0.1:8000/ws/events</span></div>
               <div>Microphone Input: <span style={{ color: "#34d399" }}>Ready ({micStatus})</span></div>
               <div>Voice Input: <span style={{ color: "#34d399" }}>Active ({voiceState})</span></div>
               <div>Voice Output: <span style={{ color: "#fbbf24" }}>Disabled (Visual Feedback - V2.4 Submission Scope)</span></div>
-              <div>Person Recognition: <span style={{ color: worldSnapshot?.person?.name ? "#34d399" : "#fbbf24" }}>{worldSnapshot?.person?.name || "Disabled (Coming in v2.6)"}</span></div>
+              <div>Person Recognition: <span style={{ color: "#fbbf24" }}>Disabled (Coming in v2.6)</span></div>
               <div>Eye Gaze System: <span style={{ color: "#34d399" }}>{calibStatus === "CALIBRATION_COMPLETE" ? "CALIBRATED" : "ACTIVE"}</span></div>
               <div>Cursor Control: <span style={{ color: cursorControlActive ? "#34d399" : "#fbbf24" }}>{cursorControlActive ? "ACTIVE" : calibStatus === "CALIBRATION_COMPLETE" ? "READY" : "DISABLED"}</span></div>
               <div>Blink Gesture Detection: <span style={{ color: "#34d399" }}>ACTIVE</span></div>
@@ -988,22 +1177,49 @@ export default function Dashboard() {
               <div style={{ display: "flex", justifyContent: "center", gap: "0.75rem", marginTop: "0.5rem", pointerEvents: "auto" }}>
                 {calibStatus === "CALIBRATION_COMPLETE" && (
                   <>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); cursorControlActive ? handleStopCursorControl() : handleStartCursorControl(); }}
-                      style={{
-                        padding: "0.6rem 1.4rem",
-                        borderRadius: "8px",
-                        background: cursorControlActive ? "#ef4444" : "#2563eb",
-                        border: "none",
-                        color: "#fff",
-                        fontWeight: "600",
-                        fontSize: "0.9rem",
-                        cursor: "pointer",
-                        pointerEvents: "auto",
-                      }}
-                    >
-                      {cursorControlActive ? "⏹ Stop Cursor Control" : "▶ Start Cursor Control"}
-                    </button>
+                    {!cursorControlActive ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCloseCalibration(true);
+                        }}
+                        style={{
+                          padding: "0.65rem 1.5rem",
+                          borderRadius: "8px",
+                          background: "linear-gradient(135deg, #059669 0%, #10b981 100%)",
+                          border: "none",
+                          color: "#fff",
+                          fontWeight: "700",
+                          fontSize: "0.92rem",
+                          cursor: "pointer",
+                          pointerEvents: "auto",
+                          boxShadow: "0 0 16px rgba(16, 185, 129, 0.4)",
+                        }}
+                      >
+                        👁️ Enable Cursor Control & Close
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStopCursorControl();
+                        }}
+                        style={{
+                          padding: "0.65rem 1.4rem",
+                          borderRadius: "8px",
+                          background: "linear-gradient(135deg, #b91c1c 0%, #ef4444 100%)",
+                          border: "none",
+                          color: "#fff",
+                          fontWeight: "700",
+                          fontSize: "0.92rem",
+                          cursor: "pointer",
+                          pointerEvents: "auto",
+                          boxShadow: "0 0 16px rgba(239, 68, 68, 0.4)",
+                        }}
+                      >
+                        ⏸️ Pause Cursor Control
+                      </button>
+                    )}
                     <button
                       onClick={(e) => { e.stopPropagation(); handleStartCalibration(); }}
                       style={{
@@ -1043,7 +1259,7 @@ export default function Dashboard() {
                 )}
 
                 <button
-                  onClick={(e) => { e.stopPropagation(); handleCloseCalibration(); }}
+                  onClick={(e) => { e.stopPropagation(); handleCloseCalibration(false); }}
                   style={{
                     padding: "0.6rem 1.25rem",
                     borderRadius: "8px",
@@ -1055,7 +1271,7 @@ export default function Dashboard() {
                     pointerEvents: "auto",
                   }}
                 >
-                  {calibStatus === "CALIBRATION_COMPLETE" ? "Done" : "Cancel"}
+                  {calibStatus === "CALIBRATION_COMPLETE" ? "Done (Return to Dashboard)" : "Cancel"}
                 </button>
               </div>
             </div>

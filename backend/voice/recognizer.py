@@ -12,23 +12,73 @@ from backend.core.events.bus import EventBus
 from backend.utils.logger import get_logger
 from backend.voice.preprocessor import AdaptiveGainControlFilter, AudioPreprocessor, PeakLimiterFilter
 from backend.voice.telemetry import AudioCapturedEvent, TranscriptionCompletedEvent
-
 import os
 import sys
+
+def _register_cuda_dll_directories() -> None:
+    """Ensure NVIDIA cuDNN and cuBLAS DLL directories are discoverable on Windows."""
+    if sys.platform != "win32":
+        return
+    try:
+        from pathlib import Path
+        import shutil
+        site_packages = Path(sys.prefix) / "Lib" / "site-packages"
+        ct2_dir = site_packages / "ctranslate2"
+        for sub in ("nvidia/cudnn/bin", "nvidia/cublas/bin"):
+            dll_dir = site_packages / sub
+            if dll_dir.exists():
+                try:
+                    os.add_dll_directory(str(dll_dir))
+                except Exception:
+                    pass
+                cur_path = os.environ.get("PATH", "")
+                if str(dll_dir) not in cur_path:
+                    os.environ["PATH"] = str(dll_dir) + os.pathsep + cur_path
+                if ct2_dir.exists():
+                    for dll in dll_dir.glob("*.dll"):
+                        target_file = ct2_dir / dll.name
+                        if not target_file.exists():
+                            try:
+                                shutil.copy2(str(dll), str(target_file))
+                            except Exception:
+                                pass
+    except Exception:
+        pass
+
+
+_register_cuda_dll_directories()
+
+import ctranslate2
 from backend.core.config.settings import settings
+from backend.voice.command_engine import VoskCommandEngine
+from backend.voice.action_engine import MultimodalActionDispatcher
 
 logger = get_logger(__name__)
 
 TranscriptHandler = Callable[[str], tuple[str, str]]
 
 
-def resolve_whisper_model_path(model_size_or_name: str = "base.en", explicit_path: str | None = None) -> str:
+def get_whisper_device_and_compute() -> tuple[str, str]:
+    """Detect CUDA support for faster-whisper / ctranslate2; return device and compute_type."""
+    try:
+        # Check if CUDA device is available and functional
+        if ctranslate2.get_cuda_device_count() > 0:
+            return "cuda", "float16"
+    except Exception:
+        pass
+    return "cpu", "int8"
+
+
+_DEFAULT_WHISPER_DEVICE, _DEFAULT_WHISPER_COMPUTE = get_whisper_device_and_compute()
+
+
+def resolve_whisper_model_path(model_size_or_name: str = "small.en", explicit_path: str | None = None) -> str:
     """
     Resolves the Faster-Whisper model size string or local directory path for offline use.
     Resolution order:
     1. explicit_path if provided and exists
     2. settings.VOICE_MODEL_PATH if set and exists
-    3. Bundled production resources: resources/models/whisper-base.en or resources/models/<model_size>
+    3. Bundled production resources: resources/models/whisper-small.en, resources/models/whisper-base.en, or resources/models/<model_size>
     4. Fallback to model_size_or_name string for Hugging Face cache / dev mode
     """
     if explicit_path and os.path.exists(explicit_path):
@@ -75,34 +125,39 @@ class ListenMode(str, Enum):
     PUSH_TO_TALK = "push_to_talk"
 
 
-# Keep Whisper unbiased for short clips; command-heavy prompts can turn silence
-# or low-noise audio into actionable command hallucinations.
-_COMMAND_INITIAL_PROMPT: str | None = None
+_COMMAND_INITIAL_PROMPT = (
+    "Commands: find, search, open chrome, notepad, camera, double click, "
+    "right click, scroll down, scroll up, close window, open PC, desktop, "
+    "files, documents, okay, done."
+)
 
 
 @dataclass(frozen=True)
 class VoiceRecognitionConfig:
     """Voice recognition runtime configuration."""
 
-    model_size: str = "base.en"
+    model_size: str = "small.en"
     model_path: str | None = None
     sample_rate: int = 16000
     language: str = "en"
-    device: str = "cpu"
-    compute_type: str = "int8"
+    device: str = _DEFAULT_WHISPER_DEVICE
+    compute_type: str = _DEFAULT_WHISPER_COMPUTE
     cpu_threads: int = 4
     block_duration_seconds: float = 0.25
-    silence_threshold: float = 0.010
-    silence_duration_seconds: float = 0.40
+    silence_threshold: float = 0.0035
+    silence_duration_seconds: float = 0.85
     min_utterance_seconds: float = 0.35
     max_utterance_seconds: float = 4.0
-    trailing_silence_blocks: int = 1
+    trailing_silence_blocks: int = 3
     peak_norm_target: float = 0.85
-    no_speech_threshold: float = 0.55
+    no_speech_threshold: float = 0.80
+    logprob_threshold: float = -1.0
     listen_mode: ListenMode = ListenMode.CONTINUOUS
     enable_agc: bool = True
     target_rms: float = 0.04
-    max_agc_gain: float = 40.0
+    min_agc_gain: float = 0.5
+    max_agc_gain: float = 8.0
+    peak_limit: float = 0.95
     preprocessor: AudioPreprocessor | None = None
     event_bus: EventBus | None = None
 
@@ -119,6 +174,7 @@ class VoiceRecognitionState:
     detectedIntent: str | None
     executionStatus: str
     error: str | None
+    ready: bool = True
 
 
 class VoiceRecognitionService:
@@ -138,10 +194,12 @@ class VoiceRecognitionService:
             filters=[
                 AdaptiveGainControlFilter(
                     target_rms=self._config.target_rms,
+                    min_gain=self._config.min_agc_gain,
                     max_gain=self._config.max_agc_gain,
+                    peak_limit=self._config.peak_limit,
                     enabled=self._config.enable_agc,
                 ),
-                PeakLimiterFilter(),
+                PeakLimiterFilter(threshold=self._config.peak_limit),
             ],
             enabled=True,
         )
@@ -159,7 +217,24 @@ class VoiceRecognitionService:
         self._error: str | None = None
         self._tts_suppression_until: float = 0.0
         self._tts_active: bool = False
+        self._is_busy: bool = False
+        self._command_engine = VoskCommandEngine(sample_rate=self._config.sample_rate)
+        self._action_dispatcher = MultimodalActionDispatcher()
         self._validate_config(self._config)
+
+    def set_busy(self, busy: bool) -> None:
+        """Lock or unlock voice capture during asynchronous command execution (e.g. document search)."""
+        with self._lock:
+            self._is_busy = busy
+            if busy:
+                logger.info("[VOICE] System marked BUSY: incoming microphone speech ignored during async execution.")
+            else:
+                logger.info("[VOICE] System marked IDLE: microphone capture active.")
+
+    def is_busy(self) -> bool:
+        """Return whether the voice system is currently busy executing an async command."""
+        with self._lock:
+            return self._is_busy
 
     def set_on_speech_start(self, callback: Callable[[], None] | None) -> None:
         """Attach a callback triggered on speech onset / VAD activation."""
@@ -317,7 +392,74 @@ class VoiceRecognitionService:
                 detectedIntent=self._detected_intent,
                 executionStatus=self._execution_status,
                 error=self._error,
+                ready=True,
             )
+
+    def verify_device_available(self) -> bool:
+        """Check if an audio input device is available on the system."""
+        try:
+            sd, _ = self._load_audio_dependencies()
+            dev = sd.query_devices(kind="input")
+            return bool(dev)
+        except Exception:
+            return False
+
+    def _create_stream(
+        self,
+        sd: Any,
+        target_device_idx: Any = None,
+        actual_sr: int | None = 16000,
+        actual_block_size: int = 4800,
+    ) -> Any:
+        """Create and start sounddevice input stream with multi-channel support to prevent phase cancellation."""
+        channels = 1
+        try:
+            if target_device_idx is not None:
+                dev_info = sd.query_devices(target_device_idx, kind="input")
+            else:
+                dev_info = sd.query_devices(kind="input")
+            max_in = int(dev_info.get("max_input_channels", 1))
+            if max_in >= 2:
+                channels = 2
+        except Exception:
+            channels = 1
+
+        kwargs: dict[str, Any] = {
+            "device": target_device_idx,
+            "channels": channels,
+            "dtype": "float32",
+            "blocksize": actual_block_size,
+        }
+        if actual_sr is not None:
+            kwargs["samplerate"] = actual_sr
+        stream = sd.InputStream(**kwargs)
+        stream.start()
+        return stream
+
+    def open_audio_stream_with_retry(
+        self,
+        sd: Any,
+        target_device_idx: Any = None,
+        actual_sr: int | None = 16000,
+        actual_block_size: int = 4800,
+        max_retries: int = 3,
+        delay_sec: float = 0.25,
+    ) -> Any:
+        """Open audio input stream with retry loop and backoff for driver warm-up."""
+        import time
+        last_err = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                stream = self._create_stream(sd, target_device_idx, actual_sr, actual_block_size)
+                logger.info(f"[AUDIO] Microphone stream initialized successfully on attempt {attempt}.")
+                return stream
+            except Exception as err:
+                last_err = err
+                logger.warning(
+                    f"[AUDIO] Microphone init attempt {attempt}/{max_retries} failed ({err}). Retrying in {delay_sec}s..."
+                )
+                time.sleep(delay_sec)
+        raise RuntimeError(f"Failed to initialize audio input after {max_retries} attempts: {last_err}")
 
     def get_diagnostics(self) -> dict[str, Any]:
         """Return safe, detailed real-time hardware microphone diagnostic information."""
@@ -387,53 +529,52 @@ class VoiceRecognitionService:
             needs_resampling = (actual_sr != self._config.sample_rate)
             actual_block_size = int(actual_sr * self._config.block_duration_seconds) if needs_resampling else block_size
 
-            # Pre-warm & settling delay (500ms) to allow OS/PortAudio hardware handles to stabilize
-            time.sleep(0.5)
+            # Pre-warm & settling delay (250ms) to allow OS/PortAudio hardware handles to stabilize
+            time.sleep(0.25)
 
-            # Step 1: Attempt primary selected device
+            # Step 1: Attempt primary selected device with retry
             try:
-                stream = sd.InputStream(
-                    device=target_device_idx,
-                    samplerate=actual_sr,
-                    channels=1,
-                    dtype="float32",
-                    blocksize=actual_block_size,
+                stream = self.open_audio_stream_with_retry(
+                    sd=sd,
+                    target_device_idx=target_device_idx,
+                    actual_sr=actual_sr,
+                    actual_block_size=actual_block_size,
+                    max_retries=3,
+                    delay_sec=0.25,
                 )
-                stream.start()
-            except (getattr(sd, "PortAudioError", Exception), Exception) as stream_err:
+            except Exception as stream_err:
                 logger.warning(
-                    "[MIC] Primary stream opening failed on device #%s (%s): %s. Resetting and falling back to system default...",
+                    "[MIC] Primary stream opening failed on device #%s (%s): %s. Falling back to system default...",
                     target_device_idx,
                     dev_name,
                     stream_err,
                 )
-                time.sleep(0.5)
-                # Step 2: Fallback to system default input (device=None) at 16000 Hz or native rate
+                # Step 2: Fallback to system default input (device=None) at 16000 Hz or native rate with retry
                 try:
                     actual_sr = 16000
                     actual_block_size = block_size
                     needs_resampling = False
-                    stream = sd.InputStream(
-                        device=None,
-                        samplerate=16000,
-                        channels=1,
-                        dtype="float32",
-                        blocksize=block_size,
+                    stream = self.open_audio_stream_with_retry(
+                        sd=sd,
+                        target_device_idx=None,
+                        actual_sr=16000,
+                        actual_block_size=block_size,
+                        max_retries=3,
+                        delay_sec=0.25,
                     )
-                    stream.start()
                     target_device_idx = sd.default.device[0] if hasattr(sd, "default") and getattr(sd.default, "device", None) else None
                     dev_name = "Default System Input"
                 except Exception as fallback_err:
-                    logger.warning("[MIC] Fallback at 16kHz failed (%s). Attempting native default rate...", fallback_err)
-                    time.sleep(0.5)
+                    logger.warning("[MIC] Fallback at 16kHz failed (%s). Attempting native default rate with retry...", fallback_err)
                     try:
-                        stream = sd.InputStream(
-                            device=None,
-                            channels=1,
-                            dtype="float32",
-                            blocksize=block_size,
+                        stream = self.open_audio_stream_with_retry(
+                            sd=sd,
+                            target_device_idx=None,
+                            actual_sr=None,
+                            actual_block_size=block_size,
+                            max_retries=3,
+                            delay_sec=0.25,
                         )
-                        stream.start()
                         dev_name = "Default System Input (Native Rate)"
                     except Exception as final_err:
                         logger.exception("[MIC] All microphone InputStream creation attempts failed! %s", final_err)
@@ -469,13 +610,14 @@ class VoiceRecognitionService:
                             or (now < self._tts_suppression_until)
                             or (self._speech_output_manager and getattr(self._speech_output_manager, "is_speaking", False))
                         )
+                        is_busy_locked = self._is_busy
 
                     # ALWAYS read stream to drain OS hardware audio buffers continuously!
                     block, overflowed = stream.read(actual_block_size)
                     if overflowed:
                         logger.warning("Microphone input overflow while listening.")
 
-                    if is_tts_suppressed:
+                    if is_tts_suppressed or is_busy_locked:
                         dropped_blocks_count += 1
                         speech_blocks = []
                         silent_blocks = 0
@@ -494,14 +636,23 @@ class VoiceRecognitionService:
                         self._stop_event.wait(self._config.block_duration_seconds)
                         continue
 
-                    raw_mono = np.asarray(block, dtype=np.float32).reshape(-1)
+                    raw_mono = self.select_audio_channel(block)
                     if needs_resampling and raw_mono.size > 0:
-                        # Resample captured hardware audio to target 16000 Hz
-                        x_old = np.linspace(0, 1, len(raw_mono))
-                        x_new = np.linspace(0, 1, block_size)
-                        mono_block = np.interp(x_new, x_old, raw_mono).astype(np.float32)
+                        # Resample captured hardware audio to target 16000 Hz using band-limited polyphase filter
+                        import math
+                        from scipy.signal import resample_poly
+
+                        gcd = math.gcd(int(actual_sr), 16000)
+                        up = 16000 // gcd
+                        down = int(actual_sr) // gcd
+                        mono_block = resample_poly(raw_mono, up, down).astype(np.float32)
                     else:
                         mono_block = raw_mono
+
+                    if mono_block.size > 0:
+                        cmd_action = self._command_engine.process_audio_chunk(mono_block)
+                        if cmd_action:
+                            self._action_dispatcher.dispatch(cmd_action)
 
                     if is_ptt_mode:
                         speech_blocks.append(mono_block.copy())
@@ -627,6 +778,8 @@ class VoiceRecognitionService:
         import time
         now = time.time()
         with self._lock:
+            if self._is_busy:
+                return False
             if now < self._tts_suppression_until:
                 return False
             mode = self._listen_mode
@@ -647,9 +800,9 @@ class VoiceRecognitionService:
         """Transcribe captured audio and dispatch the transcript callback."""
         import os
         import threading
-        if self.is_tts_active():
+        if self.is_tts_active() or self.is_busy():
             logger.info(
-                "[STT FIREWALL] ABORTING AUDIO PROCESSING — TTS is active or suppressed! (PID=%d THREAD=%d)",
+                "[STT FIREWALL] ABORTING AUDIO PROCESSING — System is TTS suppressed or busy! (PID=%d THREAD=%d)",
                 os.getpid(),
                 threading.get_ident(),
             )
@@ -714,13 +867,15 @@ class VoiceRecognitionService:
             latency_ms = (time.time() - t0) * 1000.0
             logger.info("TRANSCRIPTION: Raw transcript: '%s' (latency: %.1fms)", transcript, latency_ms)
 
-            # HARD SAFETY GATE 1: Discard transcript if TTS is currently active or in settling window
-            if self.is_tts_active():
+            # HARD SAFETY GATE 1: Discard transcript if TTS is currently active or in settling window, or if system is busy
+            if self.is_tts_active() or self.is_busy():
                 import os
                 import threading
                 logger.warning(
-                    "[FALSE TRANSCRIPT CANDIDATE REJECTED] TEXT='%s' TTS_ACTIVE=True STATE='%s' PID=%d THREAD=%d",
+                    "[FALSE TRANSCRIPT CANDIDATE REJECTED] TEXT='%s' TTS_ACTIVE=%s BUSY=%s STATE='%s' PID=%d THREAD=%d",
                     transcript,
+                    self.is_tts_active(),
+                    self.is_busy(),
                     self._execution_status,
                     os.getpid(),
                     threading.get_ident(),
@@ -763,6 +918,14 @@ class VoiceRecognitionService:
                     self._execution_status = "Empty speech"
                 self._error = None
             return
+
+        if transcript:
+            cmd_match = self._command_engine.process_text_command(transcript)
+            if cmd_match:
+                self._action_dispatcher.dispatch(cmd_match)
+            elif self._action_dispatcher.dictation_active or self._action_dispatcher._single_type_pending:
+                self._action_dispatcher.type_text(transcript)
+                self._action_dispatcher._single_type_pending = False
 
         detected_intent = "NO_INTENT"
         execution_status = "Transcript captured."
@@ -809,9 +972,9 @@ class VoiceRecognitionService:
             language=self._config.language,
             task="transcribe",
             vad_filter=use_vad_filter,
-            beam_size=2,
-            best_of=2,
-            temperature=0.0,
+            beam_size=5,
+            best_of=5,
+            temperature=[0.0, 0.2],
             condition_on_previous_text=False,
             initial_prompt=_COMMAND_INITIAL_PROMPT,
             no_speech_threshold=self._config.no_speech_threshold,
@@ -822,35 +985,101 @@ class VoiceRecognitionService:
         parts: list[str] = []
         logger.info("Whisper:")
         for segment in segments:
-            text = (segment.text or "").strip()
             no_speech = float(getattr(segment, "no_speech_prob", 0.0) or 0.0)
             avg_logprob = float(getattr(segment, "avg_logprob", 0.0) or 0.0)
             logger.info("TRACE [8/11]: no_speech_prob = %.6f", no_speech)
             logger.info("TRACE [9/11]: avg_logprob = %.6f", avg_logprob)
-            logger.info("- segment.text: %s", text)
-            logger.info("- no_speech_prob: %.6f (threshold: %.6f)", no_speech, self._config.no_speech_threshold)
-            logger.info("- avg_logprob: %.6f", avg_logprob)
-            if not text:
-                logger.info("  -> Dropped: empty segment text")
+            if not self.is_segment_valid(segment):
                 continue
-            if no_speech >= self._config.no_speech_threshold:
-                logger.info("  -> Dropped by secondary no_speech_threshold (%.6f >= %.6f)", no_speech, self._config.no_speech_threshold)
-                continue
-            logger.info("  -> Kept segment text: %s", text)
+            text = (segment.text or "").strip()
             parts.append(text)
         result_text = " ".join(parts).strip()
         logger.info("TRACE [7/11]: Transcript returned by Whisper = '%s'", result_text)
         return result_text
 
+    def is_segment_valid(self, segment: Any) -> bool:
+        """Evaluate whether a Whisper segment is valid speech or noise/hallucination."""
+        text = (getattr(segment, "text", "") or "").strip()
+        if not text:
+            logger.info("  -> Dropped: empty segment text")
+            return False
+        if not any(c.isalnum() for c in text):
+            logger.info("  -> Dropped: non-alphanumeric/punctuation-only segment text")
+            return False
+
+        no_speech = float(getattr(segment, "no_speech_prob", 0.0) or 0.0)
+        avg_logprob = float(getattr(segment, "avg_logprob", 0.0) or 0.0)
+
+        no_speech_thresh = getattr(self._config, "no_speech_threshold", 0.80)
+        logprob_thresh = getattr(self._config, "logprob_threshold", -1.0)
+
+        logger.info("- segment.text: %s", text)
+        logger.info("- no_speech_prob: %.6f (threshold: %.2f)", no_speech, no_speech_thresh)
+        logger.info("- avg_logprob: %.6f (threshold: %.2f)", avg_logprob, logprob_thresh)
+
+        # Combined filtering condition: reject only if BOTH no_speech_prob is elevated AND avg_logprob is low
+        if no_speech >= no_speech_thresh and avg_logprob < logprob_thresh:
+            logger.info(
+                "  -> Dropped: low-confidence segment (no_speech_prob=%.4f >= %.2f and avg_logprob=%.4f < %.2f)",
+                no_speech,
+                no_speech_thresh,
+                avg_logprob,
+                logprob_thresh,
+            )
+            return False
+
+        logger.info("  -> Kept segment text: %s", text)
+        return True
+
+    @staticmethod
+    def select_audio_channel(block: Any) -> np.ndarray:
+        """Select the louder microphone channel when stereo audio is provided, avoiding phase cancellation."""
+        import numpy as np
+
+        block_arr = np.asarray(block, dtype=np.float32)
+        if block_arr.ndim == 2 and block_arr.shape[1] >= 2:
+            ch0 = block_arr[:, 0]
+            ch1 = block_arr[:, 1]
+            rms0 = float(np.sqrt(np.mean(np.square(ch0)))) if ch0.size else 0.0
+            rms1 = float(np.sqrt(np.mean(np.square(ch1)))) if ch1.size else 0.0
+            return ch1 if rms1 > rms0 else ch0
+        elif block_arr.ndim == 2:
+            return block_arr[:, 0]
+        else:
+            return block_arr.reshape(-1)
+
     def _preprocess_audio(self, audio: Any) -> Any:
-        """Preprocess audio via injected AudioPreprocessor pipeline."""
+        """Preprocess audio via injected AudioPreprocessor pipeline with conditional peak protection."""
         import numpy as np
 
         samples = np.asarray(audio, dtype=np.float32).reshape(-1)
         if samples.size == 0:
             return samples
 
-        return self._preprocessor.process(samples, self._config.sample_rate)
+        if not np.all(np.isfinite(samples)):
+            safe_limit = getattr(self._config, "peak_limit", 0.95)
+            samples = np.nan_to_num(
+                samples,
+                nan=0.0,
+                posinf=safe_limit,
+                neginf=-safe_limit,
+            ).astype(np.float32)
+
+        processed = np.asarray(
+            self._preprocessor.process(samples, self._config.sample_rate),
+            dtype=np.float32,
+        ).reshape(-1)
+        if processed.size == 0:
+            return processed
+
+        # Conditional peak protection: preserve the gain selected by AGC,
+        # only attenuate if peak exceeds safe limit (e.g. 0.95), preventing clipping/distortion.
+        safe_peak_limit = getattr(self._config, "peak_limit", 0.95)
+        peak = float(np.max(np.abs(processed)))
+        if peak > safe_peak_limit and peak > 1e-6:
+            processed = processed * (safe_peak_limit / peak)
+
+        return np.ascontiguousarray(processed, dtype=np.float32)
 
     def _load_model(self) -> Any:
         """Load Faster-Whisper lazily on first listening session."""
@@ -863,21 +1092,63 @@ class VoiceRecognitionService:
         except Exception as exc:
             raise RuntimeError("faster-whisper is not installed or could not be loaded") from exc
 
+        target_model_path = resolve_whisper_model_path(
+            model_size_or_name=self._config.model_size,
+            explicit_path=self._config.model_path,
+        )
+        num_threads = getattr(self._config, "cpu_threads", 4) or 4
+        logger.info(
+            "Loading Faster-Whisper model from: %s (device=%s, compute_type=%s, cpu_threads=%d)",
+            target_model_path,
+            self._config.device,
+            self._config.compute_type,
+            num_threads,
+        )
         try:
-            target_model_path = resolve_whisper_model_path(
-                model_size_or_name=self._config.model_size,
-                explicit_path=self._config.model_path,
-            )
-            num_threads = getattr(self._config, "cpu_threads", 4) or 4
-            logger.info("Loading Faster-Whisper model from: %s (cpu_threads=%d)", target_model_path, num_threads)
             model = WhisperModel(
                 target_model_path,
                 device=self._config.device,
                 compute_type=self._config.compute_type,
                 cpu_threads=num_threads,
             )
-        except Exception as exc:
-            raise RuntimeError("Whisper failure.") from exc
+        except Exception as primary_exc:
+            if self._config.model_size != "base.en":
+                logger.warning(
+                    "Failed to load Faster-Whisper model '%s' on %s (%s). Falling back to 'base.en'...",
+                    target_model_path,
+                    self._config.device,
+                    primary_exc,
+                )
+                try:
+                    fallback_path = resolve_whisper_model_path(
+                        model_size_or_name="base.en",
+                        explicit_path=None,
+                    )
+                    model = WhisperModel(
+                        fallback_path,
+                        device=self._config.device,
+                        compute_type=self._config.compute_type,
+                        cpu_threads=num_threads,
+                    )
+                except Exception as fallback_exc:
+                    logger.warning(
+                        "Fallback model 'base.en' on %s failed (%s). Attempting CPU fallback...",
+                        self._config.device,
+                        fallback_exc,
+                    )
+                    try:
+                        model = WhisperModel(
+                            fallback_path,
+                            device="cpu",
+                            compute_type="int8",
+                            cpu_threads=num_threads,
+                        )
+                    except Exception as cpu_exc:
+                        raise RuntimeError(
+                            "Whisper failure: both primary and fallback models failed to load."
+                        ) from cpu_exc
+            else:
+                raise RuntimeError("Whisper failure.") from primary_exc
 
         with self._lock:
             self._model = model
@@ -907,7 +1178,7 @@ class VoiceRecognitionService:
             "action blocked by actionengine",
         )
         for phrase in canonical_phrases:
-            if phrase in norm or norm in phrase:
+            if phrase in norm:  # Only block if assistant speech is inside user phrase
                 return True
         return False
 

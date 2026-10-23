@@ -1,8 +1,8 @@
-appId: com.irisai.desktop
+appId: com.iris.ai
 productName: IRIS AI
 compression: store
 directories:
-  output: release
+  output: ../release
 files:
   - dist/**/*
   - electron/**/*
@@ -28,5 +28,7 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: IRIS AI
-  artifactName: IRIS-AI-Setup-v2.4.5.${ext}
+  runAfterFinish: true
+  artifactName: IRIS-AI-v${version}-Setup.${ext}
   uninstallDisplayName: IRIS AI
+

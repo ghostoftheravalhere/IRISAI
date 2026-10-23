@@ -1,14 +1,15 @@
 {
   "name": "iris-ai",
-  "version": "2.4.5",
+  "version": "2.5.0",
   "description": "IRIS AI — Intelligent Responsive Interface System",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"npm:dev:backend\" \"npm:dev:vite\" \"npm:dev:electron\"",
+    "dev": "concurrently -k -s first \"npm:dev:backend\" \"npm:dev:vite\" \"npm:dev:electron\"",
     "dev:backend": "powershell -Command \"Set-Location ..; $env:PYTHONPATH='.'; & backend\\.venv\\Scripts\\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000\"",
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 tcp:8000 && electron .",
     "build": "npm run build:backend && npm run build:vite && npx electron-builder --win --x64",
+    "dist": "npm run build",
     "build:backend": "powershell -Command \"Set-Location ..; & backend\\.venv\\Scripts\\python.exe -m PyInstaller --clean -y backend.spec\"",
     "build:vite": "vite build",
     "electron": "electron .",
@@ -30,5 +31,54 @@
     "eslint-plugin-react": "^7.34.2",
     "vite": "^5.2.12",
     "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.iris.ai",
+    "productName": "IRIS AI",
+    "directories": {
+      "output": "../release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist/backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "../resources",
+        "to": "resources",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "IRIS AI",
+      "runAfterFinish": true,
+      "artifactName": "IRIS-AI-v${version}-Setup.${ext}",
+      "uninstallDisplayName": "IRIS AI"
+    }
   }
 }
