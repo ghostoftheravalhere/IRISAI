@@ -14,8 +14,8 @@ def get_logger(name: str) -> logging.Logger:
         logger.setLevel(logging.DEBUG)
 
         try:
-            local_appdata = os.environ.get("LOCALAPPDATA", os.path.expanduser("~"))
-            log_dir = os.path.join(local_appdata, "IRIS AI", "logs")
+            local_appdata = os.environ.get("LOCALAPPDATA")
+            log_dir = os.path.join(local_appdata, "IRISAI", "logs") if local_appdata else os.path.expanduser("~/.irisai/logs")
             os.makedirs(log_dir, exist_ok=True)
 
             # Master backend log

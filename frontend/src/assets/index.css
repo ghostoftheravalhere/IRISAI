@@ -167,3 +167,12 @@ optgroup {
 .animate-gold-flash {
   animation: gold-flash 0.8s ease-in-out infinite;
 }
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.35); opacity: 0.55; }
+}
+
+.animate-pulse {
+  animation: pulse 1.5s infinite ease-in-out;
+}

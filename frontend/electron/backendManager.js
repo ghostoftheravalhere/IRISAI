@@ -58,9 +58,11 @@ class BackendManager {
   constructor() {
     this.childProcess = null;
     this.ownedByElectron = false;
+    this.ownedPid = null;
     this.host = "127.0.0.1";
     this.port = 8000;
     this.healthUrl = `http://${this.host}:${this.port}/health`;
+    this.shutdownUrl = `http://${this.host}:${this.port}/api/v1/shutdown`;
 
     this.status = "stopped";
     this.message = "Backend is stopped";
@@ -68,6 +70,7 @@ class BackendManager {
     this.isStarting = false;
     this.serverReady = false;
     this.startupLogStream = null;
+    this.shutdownPromise = null;
   }
 
   isPackaged() {
@@ -79,6 +82,7 @@ class BackendManager {
       status: this.status,
       message: this.message,
       ownedByElectron: this.ownedByElectron,
+      ownedPid: this.ownedPid,
       port: this.port,
       isPackaged: this.isPackaged(),
     };
@@ -265,6 +269,11 @@ class BackendManager {
     const startTime = Date.now();
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (this.status === "stopping" || this.status === "stopped") {
+        logBackend("waitForHealth aborted: backendManager is stopping or stopped.");
+        return false;
+      }
+
       // Dynamic status message updates across the full 60 attempts
       let dynamicMsg = "Initializing AI engine & dependencies...";
       if (attempt > 45) {
@@ -296,7 +305,7 @@ class BackendManager {
       }
 
       // 3. Auto-recovery re-spawn if child process was dropped during initial scan
-      if (attempt === 6 && !this.childProcess && !this.ownedByElectron) {
+      if (attempt === 6 && !this.childProcess && !this.ownedByElectron && this.status !== "stopping" && this.status !== "stopped") {
         logBackend("[BACKEND_MGR] Child process exited during initial scan. Attempting automatic recovery re-spawn...");
         try {
           this.spawnBackendProcess();
@@ -395,6 +404,7 @@ class BackendManager {
     }
 
     this.ownedByElectron = true;
+    this.ownedPid = this.childProcess.pid;
     logBackend(`Backend process spawned successfully with PID=${this.childProcess.pid}`);
 
     this.childProcess.on("error", (err) => {
@@ -403,6 +413,7 @@ class BackendManager {
       const wasOwned = this.ownedByElectron;
       this.childProcess = null;
       this.ownedByElectron = false;
+      this.ownedPid = null;
       if (wasOwned) {
         this.setStatus("error", `Backend failed to start: ${err.message}`);
       }
@@ -445,8 +456,9 @@ class BackendManager {
       const wasOwned = this.ownedByElectron;
       this.childProcess = null;
       this.ownedByElectron = false;
+      this.ownedPid = null;
 
-      if (wasOwned && this.status !== "stopped") {
+      if (wasOwned && this.status !== "stopped" && this.status !== "stopping") {
         this.setStatus("error", `Backend exited unexpectedly (code ${code})`);
       }
     });
@@ -463,8 +475,14 @@ class BackendManager {
    */
   async start() {
     if (this.isStarting) {
+      logBackend("Backend start already in progress.");
       return true;
     }
+    if (this.status === "ready") {
+      logBackend("Backend is already running and ready.");
+      return true;
+    }
+
     this.isStarting = true;
     this.serverReady = false;
     this.startupLogStream = getStartupLogStream();
@@ -478,7 +496,7 @@ class BackendManager {
     logBackend(`Process execPath: ${process.execPath}`);
 
     try {
-      // 1. Check if healthy backend is already running
+      // 1. Check if healthy IRIS backend is already running
       const existing = await this.checkHealthOnce();
       if (existing.online && existing.iris) {
         logBackend(`Found active IRIS backend on 127.0.0.1:8000 (version=${existing.version}) — reusing instance.`);
@@ -487,96 +505,232 @@ class BackendManager {
         return true;
       }
 
-      // 2. Clean up any stale unresponsive port 8000 process
-      if (process.platform === "win32") {
-        try {
-          const netstat = execSync("netstat -ano -p tcp | findstr :8000", { encoding: "utf8" });
-          const lines = netstat.trim().split("\n");
-          for (const line of lines) {
-            const parts = line.trim().split(/\s+/);
-            const pid = parts[parts.length - 1];
-            if (pid && !isNaN(pid) && parseInt(pid, 10) > 0 && parseInt(pid, 10) !== process.pid) {
-              try {
-                logBackend(`Terminating lingering port 8000 process PID ${pid}...`);
-                execSync(`taskkill /F /PID ${pid} /T`, { stdio: "ignore" });
-              } catch (e) {}
-            }
-          }
-        } catch (e) {}
-      }
-
-      // 3. Spawn the backend process
+      // 2. Spawn the backend child process
       this.spawnBackendProcess();
 
-      // 4. Wait for health check with 60 attempts at 1-second intervals (60s total timeout)
+      // 3. Wait for health check with 60 attempts at 1-second intervals (60s total timeout)
       const isHealthy = await this.waitForHealth(60, 1000);
       if (!isHealthy) {
         this.setStatus("error", "IRIS backend failed to respond within 60 seconds.");
-        this.killBackend();
+        await this.stop();
         throw new Error("IRIS backend failed to respond within 60 seconds.");
       }
 
       logBackend("IRIS backend is online and healthy.");
       this.setStatus("ready", "Backend connected & operational");
       return true;
+    } catch (err) {
+      logBackend(`Backend startup failure: ${err.message}`);
+      await this.stop();
+      throw err;
     } finally {
       this.isStarting = false;
     }
   }
 
   /**
-   * Helper to re-spawn/start backend cleanly
+   * Request graceful shutdown from the FastAPI backend via POST /api/v1/shutdown.
    */
-  async startBackend() {
-    this.killBackend();
+  requestGracefulShutdown(timeoutMs = 1500) {
+    return new Promise((resolve) => {
+      const postData = "";
+      const req = http.request(
+        {
+          hostname: this.host,
+          port: this.port,
+          path: "/api/v1/shutdown",
+          method: "POST",
+          timeout: timeoutMs,
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(postData),
+          },
+        },
+        (res) => {
+          let body = "";
+          res.on("data", (chunk) => {
+            body += chunk;
+          });
+          res.on("end", () => {
+            logBackend(`Graceful shutdown endpoint response: HTTP ${res.statusCode} ${body.trim()}`);
+            resolve(res.statusCode >= 200 && res.statusCode < 300);
+          });
+        }
+      );
+
+      req.on("error", (err) => {
+        logBackend(`Graceful shutdown request error: ${err.message}`);
+        resolve(false);
+      });
+
+      req.on("timeout", () => {
+        logBackend(`Graceful shutdown request timed out after ${timeoutMs}ms.`);
+        req.destroy();
+        resolve(false);
+      });
+
+      req.write(postData);
+      req.end();
+    });
+  }
+
+  /**
+   * Wait for child process to exit, subject to a bounded timeout.
+   */
+  waitForProcessExit(child, timeoutMs = 3000) {
+    return new Promise((resolve) => {
+      if (!child || child.killed || child.exitCode !== null) {
+        resolve(true);
+        return;
+      }
+
+      let timer = null;
+      let resolved = false;
+
+      const cleanup = (exited) => {
+        if (resolved) return;
+        resolved = true;
+        if (timer) clearTimeout(timer);
+        try {
+          child.removeListener("exit", onExit);
+          child.removeListener("close", onExit);
+        } catch (e) {}
+        resolve(exited);
+      };
+
+      const onExit = () => {
+        cleanup(true);
+      };
+
+      child.once("exit", onExit);
+      child.once("close", onExit);
+
+      timer = setTimeout(() => {
+        cleanup(false);
+      }, timeoutMs);
+    });
+  }
+
+  /**
+   * Platform-specific targeted process tree termination for verified IRIS AI child process ONLY.
+   * Never terminates unrelated processes or generic process names.
+   */
+  forceKillProcessTree(pid) {
+    const targetPid = parseInt(pid, 10);
+    if (!targetPid || isNaN(targetPid) || targetPid <= 0) {
+      logBackend(`Invalid PID ${pid} provided for forceKillProcessTree; aborting.`);
+      return;
+    }
+
+    // Safety guard: NEVER kill own process PID or root PIDs
+    if (targetPid === process.pid || targetPid <= 4) {
+      logBackend(`Target PID ${targetPid} matches current process or system process; refusing to terminate.`);
+      return;
+    }
+
+    logBackend(`Executing targeted process-tree termination on verified PID ${targetPid}...`);
+    try {
+      if (process.platform === "win32") {
+        execSync(`taskkill /pid ${targetPid} /T /F`, { stdio: "ignore" });
+      } else {
+        process.kill(targetPid, "SIGKILL");
+      }
+    } catch (e) {
+      // Process may already have exited
+    }
+  }
+
+  /**
+   * Stop backend with graceful shutdown first, bounded timeout, and targeted fallback kill.
+   * Completely idempotent and protected against concurrent calls.
+   */
+  stop() {
+    if (this.shutdownPromise) {
+      logBackend("Shutdown already in progress; returning existing shutdown promise.");
+      return this.shutdownPromise;
+    }
+
+    if (this.status === "stopped" && !this.childProcess) {
+      return Promise.resolve(true);
+    }
+
+    this.shutdownPromise = (async () => {
+      const previousStatus = this.status;
+      this.setStatus("stopping", "Shutting down backend process...");
+
+      const child = this.childProcess;
+      const pid = this.ownedPid || (child ? child.pid : null);
+      const wasOwned = this.ownedByElectron;
+
+      try {
+        // 1. Send graceful shutdown HTTP request if backend was online, ready, or owned
+        if (previousStatus === "ready" || previousStatus === "connecting" || wasOwned) {
+          logBackend("Requesting graceful HTTP shutdown from backend...");
+          await this.requestGracefulShutdown(1500);
+        }
+
+        // 2. If a child process is tracked, await its exit
+        if (child) {
+          logBackend(`Waiting for child process PID ${pid} to exit cleanly...`);
+          const exitedCleanly = await this.waitForProcessExit(child, 3000);
+          if (exitedCleanly) {
+            logBackend(`Backend PID ${pid} exited cleanly.`);
+          } else {
+            // 3. Bounded fallback: targeted tree termination ONLY on this child PID
+            logBackend(`Backend PID ${pid} did not exit within timeout. Falling back to targeted process-tree termination.`);
+            this.forceKillProcessTree(pid);
+            // Brief pause for OS to release file and network port handles
+            await new Promise((r) => setTimeout(r, 200));
+          }
+        }
+      } catch (err) {
+        logBackend(`Error during backend stop sequence: ${err.message}`);
+      } finally {
+        this.childProcess = null;
+        this.ownedByElectron = false;
+        this.ownedPid = null;
+        this.isStarting = false;
+        this.serverReady = false;
+        this.setStatus("stopped", "Backend stopped");
+        this.shutdownPromise = null;
+      }
+
+      return true;
+    })();
+
+    return this.shutdownPromise;
+  }
+
+  /**
+   * Restart backend cleanly: stops previous instance completely before starting anew.
+   */
+  async restart() {
+    logBackend("Backend restart initiated. Stopping current backend...");
+    await this.stop();
+    logBackend("Previous backend stopped. Starting new backend instance...");
     return await this.start();
   }
 
   /**
-   * Forcefully kill the backend process tree on Windows using taskkill /pid /T /F.
+   * Helper to re-spawn/start backend cleanly
    */
-  killBackend() {
-    const wasOwned = Boolean(this.ownedByElectron || this.isPackaged());
-
-    if (this.childProcess && this.childProcess.pid) {
-      const pid = this.childProcess.pid;
-      logBackend(`Forcefully killing backend process tree PID ${pid}...`);
-      try {
-        if (process.platform === "win32") {
-          execSync(`taskkill /pid ${pid} /T /F`);
-        } else {
-          this.childProcess.kill("SIGKILL");
-        }
-      } catch (e) {
-        // Process may already have terminated
-      }
-      this.childProcess = null;
-      this.ownedByElectron = false;
-    }
-
-    // Clean up any lingering port 8000 process only if packaged or owned by Electron
-    if (process.platform === "win32" && wasOwned) {
-      try {
-        const netstat = execSync("netstat -ano -p tcp | findstr :8000", { encoding: "utf8" });
-        const lines = netstat.trim().split("\n");
-        for (const line of lines) {
-          const parts = line.trim().split(/\s+/);
-          const pid = parts[parts.length - 1];
-          if (pid && !isNaN(pid) && parseInt(pid, 10) > 0 && parseInt(pid, 10) !== process.pid) {
-            try {
-              logBackend(`Cleaning up port 8000 listener PID ${pid}...`);
-              execSync(`taskkill /F /PID ${pid} /T`, { stdio: "ignore" });
-            } catch (e) {}
-          }
-        }
-      } catch (e) {}
-    }
-
-    this.setStatus("stopped", "Backend terminated");
+  async startBackend() {
+    await this.stop();
+    return await this.start();
   }
 
-  stop() {
-    this.killBackend();
+  /**
+   * Backward-compatible synchronous/emergency kill wrapper.
+   */
+  killBackend() {
+    if (this.childProcess && this.childProcess.pid) {
+      const pid = this.childProcess.pid;
+      this.forceKillProcessTree(pid);
+      this.childProcess = null;
+      this.ownedByElectron = false;
+      this.ownedPid = null;
+    }
+    this.setStatus("stopped", "Backend terminated");
   }
 }
 

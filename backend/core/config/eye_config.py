@@ -24,9 +24,11 @@ class EyeInteractionConfig:
     """
 
     # --- EAR classification ---
-    ear_close_threshold: float = 0.21
-    ear_open_threshold: float = 0.26
-    ear_freeze_threshold: float = 0.31
+    ear_close_threshold: float = 0.18
+    ear_open_threshold: float = 0.21
+    ear_freeze_threshold: float = 0.19
+    ear_recovery_threshold: float = 0.21
+    ear_click_threshold: float = 0.16
     ear_smoothing_alpha: float = 0.35
 
     # --- Intentional blink timing (milliseconds) ---
@@ -57,6 +59,24 @@ class EyeInteractionConfig:
     action_cooldown_ms: float = 500.0
 
     # --- Gaze / cursor ---
+    # Kinematic Physics Pipeline (v2.4.6)
+    kinematic_physics_enabled: bool = True
+    kinematic_stiffness: float = 160.0
+    kinematic_damping: float = 25.3
+    kinematic_damping_ratio: float = 1.0
+    kinematic_mass: float = 1.0
+    kinematic_tremor_reduction_px: float = 14.0
+    kinematic_deadband_radius: float = 18.0
+    kinematic_breakout_radius: float = 25.0
+    kinematic_anchor_velocity_threshold: float = 15.0
+    kinematic_acceleration_gain: float = 1.5
+    kinematic_max_velocity_px_s: float = 12000.0
+    gaze_gain_x: float = 3.6
+    gaze_gain_y: float = 3.2
+    gaze_neutral_x: float = 0.50
+    gaze_neutral_y: float = 0.70
+    gaze_vertical_deadzone: float = 0.0
+
     # Lower EMA alphas = heavier smoothing (less noisy, modest added lag).
     gaze_smoothing_alpha: float = 0.28
     cursor_sensitivity: float = 0.92
@@ -67,17 +87,18 @@ class EyeInteractionConfig:
     cursor_move_duration_seconds: float = 0.0
     cursor_max_step_px: float = 1200.0
     cursor_recovery_frames: int = 6
-    cursor_history_buffer_maxlen: int = 10
+    cursor_history_buffer_maxlen: int = 6
     tracking_confidence_threshold: float = 0.45
 
     # --- Calibration sampling ---
     # Wait for gaze to settle, then average many frames so one noisy frame
-    # cannot dominate the affine fit.
-    calibration_stabilize_ms: float = 250.0
-    calibration_sample_count: int = 25
+    # cannot dominate the polynomial fit.
+    calibration_stabilize_ms: float = 400.0
+    calibration_sample_count: int = 30
     calibration_sample_timeout_ms: float = 4000.0
     calibration_sample_poll_ms: float = 20.0
-    calibration_min_valid_samples: int = 12
+    calibration_min_valid_samples: int = 15
+    calibration_blink_ear_threshold: float = 0.18
     # Reject frames whose eye-center MAD exceeds this robust z-score.
     calibration_outlier_mad_scale: float = 2.5
     # Reject consecutive samples with sudden head / landmark jumps.
@@ -86,18 +107,15 @@ class EyeInteractionConfig:
     # (user still settling / head moving). Units: normalized face space.
     calibration_max_sample_dispersion: float = 0.012
 
-    # --- Calibration quality ---
-    # RMSE / score math is unchanged. These thresholds only classify usability
-    # for webcam eyelid-landmark affine fits (not optical eye trackers).
-    #
-    # Score = 1 / (1 + rmse * 5). Typical careful webcam residual RMSE ≈ 0.10–0.20
-    # (score ≈ 0.67–0.50) while the cursor remains practically usable.
-    #   Good  >= 0.58  → RMSE <= ~0.145  (solid for a webcam)
-    #   Fair  >= 0.45  → RMSE <= ~0.244  (usable; corners softer)
-    #   Poor  <  0.45  → recalibrate / block cursor enable
+    # --- Calibration quality & Validation Gates ---
+    # Score = 1 / (1 + rmse * 5).
     calibration_quality_threshold: float = 0.45
     calibration_rmse_scale: float = 5.0
     calibration_good_score_threshold: float = 0.58
+    validation_mean_norm_threshold: float = 0.08
+    validation_max_norm_threshold: float = 0.15
+    calibration_max_condition_number: float = 10000.0
+    calibration_mode: str = "16-point"
 
     # --- Overlay ---
     # "normal" for demo polish, "debug" for developer diagnostics.
@@ -159,6 +177,32 @@ class EyeInteractionConfig:
             raise ValueError("cursor_max_step_px must be positive.")
         if self.cursor_recovery_frames < 0:
             raise ValueError("cursor_recovery_frames cannot be negative.")
+        if self.kinematic_mass <= 0.0:
+            raise ValueError("kinematic_mass must be positive.")
+        if self.kinematic_stiffness <= 0.0:
+            raise ValueError("kinematic_stiffness must be positive.")
+        if self.kinematic_damping_ratio <= 0.0:
+            raise ValueError("kinematic_damping_ratio must be positive.")
+        if self.kinematic_damping <= 0.0:
+            raise ValueError("kinematic_damping must be positive.")
+        if self.kinematic_tremor_reduction_px < 0.0:
+            raise ValueError("kinematic_tremor_reduction_px cannot be negative.")
+        if self.kinematic_deadband_radius < 0.0:
+            raise ValueError("kinematic_deadband_radius cannot be negative.")
+        if self.kinematic_breakout_radius < self.kinematic_deadband_radius:
+            raise ValueError("kinematic_breakout_radius must be >= kinematic_deadband_radius.")
+        if self.kinematic_anchor_velocity_threshold < 0.0:
+            raise ValueError("kinematic_anchor_velocity_threshold cannot be negative.")
+        if self.kinematic_acceleration_gain < 0.0:
+            raise ValueError("kinematic_acceleration_gain cannot be negative.")
+        if self.kinematic_max_velocity_px_s <= 0.0:
+            raise ValueError("kinematic_max_velocity_px_s must be positive.")
+        if self.gaze_gain_x <= 0.0 or self.gaze_gain_y <= 0.0:
+            raise ValueError("gaze_gain_x and gaze_gain_y must be positive.")
+        if not 0.0 <= self.gaze_neutral_x <= 1.0 or not 0.0 <= self.gaze_neutral_y <= 1.0:
+            raise ValueError("gaze_neutral_x and gaze_neutral_y must be in [0.0, 1.0].")
+        if self.gaze_vertical_deadzone < 0.0:
+            raise ValueError("gaze_vertical_deadzone cannot be negative.")
         if not 0.0 <= self.tracking_confidence_threshold <= 1.0:
             raise ValueError("tracking_confidence_threshold must be in [0.0, 1.0].")
         if self.calibration_stabilize_ms < 0.0:
@@ -190,6 +234,16 @@ class EyeInteractionConfig:
                 "calibration_good_score_threshold must be in "
                 "[calibration_quality_threshold, 1.0]."
             )
+        if self.validation_mean_norm_threshold <= 0.0 or self.validation_mean_norm_threshold > 1.0:
+            raise ValueError("validation_mean_norm_threshold must be in (0.0, 1.0].")
+        if self.validation_max_norm_threshold <= 0.0 or self.validation_max_norm_threshold > 1.0:
+            raise ValueError("validation_max_norm_threshold must be in (0.0, 1.0].")
+        if self.validation_max_norm_threshold < self.validation_mean_norm_threshold:
+            raise ValueError("validation_max_norm_threshold must be >= validation_mean_norm_threshold.")
+        if self.calibration_max_condition_number <= 0.0:
+            raise ValueError("calibration_max_condition_number must be positive.")
+        if self.calibration_mode not in {"16-point", "9-point"}:
+            raise ValueError("calibration_mode must be '16-point' or '9-point'.")
         if self.overlay_mode not in {"normal", "debug"}:
             raise ValueError("overlay_mode must be 'normal' or 'debug'.")
 
@@ -206,9 +260,29 @@ def build_eye_interaction_config() -> EyeInteractionConfig:
     config = EyeInteractionConfig(
         ear_close_threshold=settings.EAR_CLOSE_THRESHOLD,
         ear_open_threshold=settings.EAR_OPEN_THRESHOLD,
+        ear_freeze_threshold=getattr(settings, "EAR_FREEZE_THRESHOLD", 0.19),
+        ear_recovery_threshold=getattr(settings, "EAR_OPEN_THRESHOLD", 0.21),
+        ear_click_threshold=getattr(settings, "EAR_CLOSE_THRESHOLD", 0.16),
+        cursor_history_buffer_maxlen=6,
         intentional_blink_min_ms=settings.INTENTIONAL_BLINK_MIN_MS,
         intentional_blink_max_ms=settings.INTENTIONAL_BLINK_MAX_MS,
         double_long_blink_window_ms=settings.DOUBLE_LONG_BLINK_WINDOW_MS,
+        kinematic_physics_enabled=getattr(settings, "KINEMATIC_PHYSICS_ENABLED", True),
+        kinematic_stiffness=getattr(settings, "KINEMATIC_STIFFNESS", 160.0),
+        kinematic_damping=getattr(settings, "KINEMATIC_DAMPING", 25.3),
+        kinematic_damping_ratio=getattr(settings, "KINEMATIC_DAMPING_RATIO", 1.0),
+        kinematic_mass=getattr(settings, "KINEMATIC_MASS", 1.0),
+        kinematic_tremor_reduction_px=getattr(settings, "KINEMATIC_TREMOR_REDUCTION_PX", 14.0),
+        kinematic_deadband_radius=getattr(settings, "KINEMATIC_DEADBAND_RADIUS", 18.0),
+        kinematic_breakout_radius=getattr(settings, "KINEMATIC_BREAKOUT_RADIUS", 25.0),
+        kinematic_anchor_velocity_threshold=getattr(settings, "KINEMATIC_ANCHOR_VELOCITY_THRESHOLD", 15.0),
+        kinematic_acceleration_gain=getattr(settings, "KINEMATIC_ACCELERATION_GAIN", 1.5),
+        kinematic_max_velocity_px_s=getattr(settings, "KINEMATIC_MAX_VELOCITY_PX_S", 12000.0),
+        gaze_gain_x=getattr(settings, "GAZE_GAIN_X", 3.6),
+        gaze_gain_y=getattr(settings, "GAZE_GAIN_Y", 3.2),
+        gaze_neutral_x=getattr(settings, "GAZE_NEUTRAL_X", 0.50),
+        gaze_neutral_y=getattr(settings, "GAZE_NEUTRAL_Y", 0.70),
+        gaze_vertical_deadzone=getattr(settings, "GAZE_VERTICAL_DEADZONE", 0.0),
         cursor_sensitivity=settings.CURSOR_SENSITIVITY,
         cursor_smoothing_alpha=settings.CURSOR_SMOOTHING,
         cursor_dead_zone_px=settings.CURSOR_DEAD_ZONE_PX,

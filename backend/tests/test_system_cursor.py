@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.api.app import create_app
+from backend.eye_tracking.calibration import EyeCalibrationService
 from backend.services.system_cursor import (
     SystemCursor,
     get_screen_dimensions,
@@ -126,30 +127,37 @@ def test_api_cursor_status_endpoint():
 
 
 def test_api_cursor_toggle_endpoint():
-    """Verify POST /api/cursor/toggle endpoint enables and disables cursor takeover."""
+    """Verify POST /api/cursor/toggle endpoint enforces calibration authorization."""
     app = create_app()
     client = TestClient(app)
 
     # Ensure disabled initially
     system_cursor.enabled = False
 
-    # Toggle to True
-    res1 = client.post("/api/cursor/toggle", json={"enabled": True})
-    assert res1.status_code == 200
-    assert res1.json()["enabled"] is True
-    assert system_cursor.enabled is True
-
-    # Toggle to False
-    res2 = client.post("/api/cursor/toggle", json={"enabled": False})
-    assert res2.status_code == 200
-    assert res2.json()["enabled"] is False
+    # 1. Attempt to enable cursor takeover when unauthorized -> 409 Conflict
+    res_unauth = client.post("/api/cursor/toggle", json={"enabled": True})
+    assert res_unauth.status_code == 409
+    assert "not authorized" in res_unauth.json()["detail"].lower()
     assert system_cursor.enabled is False
 
-    # Toggle without explicit body (invert state)
-    res3 = client.post("/api/cursor/toggle", json={})
-    assert res3.status_code == 200
-    assert res3.json()["enabled"] is True
-    assert system_cursor.enabled is True
+    # 2. Grant calibration authorization -> Toggle to True succeeds
+    with patch.object(EyeCalibrationService, "is_calibrated", new_callable=PropertyMock, return_value=True):
+        res1 = client.post("/api/cursor/toggle", json={"enabled": True})
+        assert res1.status_code == 200
+        assert res1.json()["enabled"] is True
+        assert system_cursor.enabled is True
+
+        # 3. Toggle to False
+        res2 = client.post("/api/cursor/toggle", json={"enabled": False})
+        assert res2.status_code == 200
+        assert res2.json()["enabled"] is False
+        assert system_cursor.enabled is False
+
+        # 4. Toggle without explicit body (invert state while authorized)
+        res3 = client.post("/api/cursor/toggle", json={})
+        assert res3.status_code == 200
+        assert res3.json()["enabled"] is True
+        assert system_cursor.enabled is True
 
 
 def test_api_cursor_move_and_click_endpoints():

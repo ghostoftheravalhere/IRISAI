@@ -119,6 +119,7 @@ def build_container(app_settings: Settings) -> AppContainer:
     cursor_controller = CursorController(
         gaze_service=eye_gaze,
         eye_config=eye_config,
+        blink_service=blink_detection,
     )
     camera.configure_blink_detection(
         blink_detection_service=blink_detection,
@@ -276,7 +277,11 @@ def build_container(app_settings: Settings) -> AppContainer:
             listen_mode=default_listen_mode,
             enable_agc=app_settings.AGC_ENABLED,
             target_rms=app_settings.AGC_TARGET_RMS,
+            min_agc_gain=app_settings.AGC_MIN_GAIN,
             max_agc_gain=app_settings.AGC_MAX_GAIN,
+            peak_limit=app_settings.PEAK_LIMITER_THRESHOLD,
+            no_speech_threshold=getattr(app_settings, "NO_SPEECH_THRESHOLD", 0.80),
+            logprob_threshold=getattr(app_settings, "LOGPROB_THRESHOLD", -1.0),
             preprocessor=audio_preprocessor,
             event_bus=event_bus,
         ),
@@ -290,6 +295,9 @@ def build_container(app_settings: Settings) -> AppContainer:
     conversation_manager.set_voice_service(voice)
     voice_pipeline.set_voice_service(voice)
     voice_pipeline.set_speech_output_manager(speech_output_manager)
+
+    from backend.features.document_search import document_search_service
+    document_search_service.set_speech_manager(speech_output_manager)
 
     health_monitor = HealthMonitor(event_bus=event_bus, enabled=app_settings.RUNTIME_PLATFORM_ENABLED)
     metrics_registry = MetricsRegistry(enabled=app_settings.METRICS_ENABLED)
@@ -403,6 +411,19 @@ def _build_eye_interaction_config(app_settings: Settings) -> EyeInteractionConfi
         intentional_blink_min_ms=app_settings.INTENTIONAL_BLINK_MIN_MS,
         intentional_blink_max_ms=app_settings.INTENTIONAL_BLINK_MAX_MS,
         double_long_blink_window_ms=app_settings.DOUBLE_LONG_BLINK_WINDOW_MS,
+        kinematic_physics_enabled=getattr(app_settings, "KINEMATIC_PHYSICS_ENABLED", True),
+        kinematic_stiffness=getattr(app_settings, "KINEMATIC_STIFFNESS", 160.0),
+        kinematic_damping=getattr(app_settings, "KINEMATIC_DAMPING", 25.3),
+        kinematic_damping_ratio=getattr(app_settings, "KINEMATIC_DAMPING_RATIO", 1.0),
+        kinematic_tremor_reduction_px=getattr(app_settings, "KINEMATIC_TREMOR_REDUCTION_PX", 14.0),
+        kinematic_deadband_radius=getattr(app_settings, "KINEMATIC_DEADBAND_RADIUS", 8.0),
+        kinematic_breakout_radius=getattr(app_settings, "KINEMATIC_BREAKOUT_RADIUS", 11.0),
+        kinematic_acceleration_gain=getattr(app_settings, "KINEMATIC_ACCELERATION_GAIN", 1.6),
+        kinematic_max_velocity_px_s=getattr(app_settings, "KINEMATIC_MAX_VELOCITY_PX_S", 12000.0),
+        gaze_gain_x=getattr(app_settings, "GAZE_GAIN_X", 3.6),
+        gaze_gain_y=getattr(app_settings, "GAZE_GAIN_Y", 3.2),
+        gaze_neutral_x=getattr(app_settings, "GAZE_NEUTRAL_X", 0.50),
+        gaze_neutral_y=getattr(app_settings, "GAZE_NEUTRAL_Y", 0.58),
         cursor_sensitivity=app_settings.CURSOR_SENSITIVITY,
         cursor_smoothing_alpha=app_settings.CURSOR_SMOOTHING,
         cursor_dead_zone_px=app_settings.CURSOR_DEAD_ZONE_PX,

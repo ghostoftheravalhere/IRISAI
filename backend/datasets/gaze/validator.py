@@ -7,6 +7,7 @@ from pathlib import Path
 
 import cv2
 
+from backend.core.config.settings import DATASET_DIR
 from backend.datasets.gaze.schema import DatasetSummaryReport
 from backend.utils.logger import get_logger
 
@@ -16,8 +17,11 @@ logger = get_logger(__name__)
 class GazeDatasetValidator:
     """Scans gaze dataset hierarchy, checks image/metadata integrity, and generates summary report."""
 
-    def __init__(self, base_dir: Path | str = "dataset/gaze") -> None:
-        self._base_dir = Path(base_dir)
+    def __init__(self, base_dir: Path | str | None = None) -> None:
+        if base_dir is None:
+            self._base_dir = DATASET_DIR / "gaze"
+        else:
+            self._base_dir = Path(base_dir)
 
     def validate_dataset(self) -> DatasetSummaryReport:
         """Scan dataset directory, verify sample integrity, detect issues, and return report."""

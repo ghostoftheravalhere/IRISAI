@@ -70,6 +70,7 @@ class EyeData:
 
     left_eye: tuple[NormalizedLandmark, ...]
     right_eye: tuple[NormalizedLandmark, ...]
+    nose_tip: NormalizedLandmark | None = None
 
 
 @dataclass(frozen=True)
@@ -160,10 +161,20 @@ class FaceMeshService:
             cv2.circle(frame, (x, y), radius=1, color=(0, 255, 0), thickness=-1)
 
     def _extract_eye_data(self, landmarks: Sequence[Any]) -> EyeData:
-        """Extract normalized left and right eye landmarks."""
+        """Extract normalized left and right eye landmarks and Landmark 1 (nose tip)."""
+        nose_tip = None
+        if len(landmarks) > 1:
+            lm1 = landmarks[1]
+            nose_tip = NormalizedLandmark(
+                index=1,
+                x=self._clamp_normalized(lm1.x),
+                y=self._clamp_normalized(lm1.y),
+                z=self._validate_depth(getattr(lm1, "z", 0.0)),
+            )
         return EyeData(
             left_eye=self._extract_landmarks(landmarks, LEFT_EYE_LANDMARK_INDICES),
             right_eye=self._extract_landmarks(landmarks, RIGHT_EYE_LANDMARK_INDICES),
+            nose_tip=nose_tip,
         )
 
     def _extract_landmarks(

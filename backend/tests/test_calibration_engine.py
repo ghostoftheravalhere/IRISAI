@@ -125,13 +125,13 @@ def test_head_pose_anchor_and_drift_compensation():
 
 
 def test_insufficient_samples_raises_error():
-    """Verify ValueError is raised when fitting with fewer than 3 samples."""
+    """Verify ValueError is raised when fitting with fewer than 6 samples."""
     calibrator = PolynomialCalibrator()
     samples = [
         CalibrationDataPoint(0.1, 0.1, 0.1, 0.1),
         CalibrationDataPoint(0.5, 0.5, 0.5, 0.5),
     ]
-    with pytest.raises(ValueError, match="At least 3 calibration samples"):
+    with pytest.raises(ValueError, match="At least 6 calibration samples"):
         calibrator.fit(samples)
 
 
@@ -146,9 +146,8 @@ def test_clamped_screen_predictions():
     """Verify predictions are strictly clamped within [0.0, 1.0]."""
     calibrator = PolynomialCalibrator()
     samples = [
-        CalibrationDataPoint(0.0, 0.0, 0.0, 0.0),
-        CalibrationDataPoint(0.5, 0.5, 0.5, 0.5),
-        CalibrationDataPoint(1.0, 1.0, 1.0, 1.0),
+        CalibrationDataPoint(tx, ty, tx, ty)
+        for tx, ty in NINE_POINT_GRID
     ]
     calibrator.fit(samples)
 

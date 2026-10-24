@@ -13,5 +13,5 @@ async def health():
         "version": settings.APP_VERSION,
         "executable": sys.executable,
         "is_frozen": getattr(sys, "frozen", False),
-        "resolver": "universal_v2.4.5",
+        "resolver": "universal_v2.5.0",
     }

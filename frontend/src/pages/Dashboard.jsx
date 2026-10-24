@@ -223,6 +223,18 @@ export default function Dashboard() {
       const ghAuth = await IRISApiClient.getGitHubStatus();
       setGithubAuth(ghAuth);
 
+      if (!isCalibrating) {
+        const eyeStat = await IRISApiClient.getEyeStatus();
+        if (eyeStat?.calibration) {
+          const cal = eyeStat.calibration;
+          if (cal.complete && cal.is_calibrated) {
+            setCalibStatus("CALIBRATION_COMPLETE");
+          } else if (cal.phase === "failed") {
+            setCalibStatus("CALIBRATION_FAILED");
+          }
+        }
+      }
+
 
 
       // Synchronize Command Log from Event History
@@ -553,7 +565,7 @@ export default function Dashboard() {
     // 2. Wait for Face Detection confirmation
     await new Promise((r) => setTimeout(r, 1200));
 
-    await IRISApiClient.restartCalibration();
+    await IRISApiClient.restartCalibration("9-point");
     setCalibStatus("CALIBRATING");
     speakText("Face detected. Look at point 1 of 9.");
   };
@@ -758,7 +770,7 @@ export default function Dashboard() {
 
         <VoiceVisualizer voiceState={voiceState} />
         <h2 style={{ color: "#60a5fa", fontSize: "1.25rem", marginTop: "0.75rem", fontWeight: "500" }}>
-          "{lastResponseText}"
+          &ldquo;{lastResponseText}&rdquo;
         </h2>
         {!ttsAvailable && (
           <div style={{ color: "#ef4444", fontSize: "0.85rem", marginTop: "0.25rem" }}>
@@ -863,7 +875,22 @@ export default function Dashboard() {
               cursor: "pointer",
             }}
           >
-            🎯 {calibStatus === "CALIBRATION_COMPLETE" ? "Recalibrate Gaze" : "Calibrate Gaze"}
+            🎯 {calibStatus === "CALIBRATION_COMPLETE" ? "Recalibrate (9-Pt)" : "Calibrate (9-Pt)"}
+          </button>
+          <button
+            onClick={() => { window.location.hash = "#/calibration"; }}
+            style={{
+              padding: "0.6rem 1.4rem",
+              borderRadius: "8px",
+              border: "1px solid #10b981",
+              background: "rgba(16, 185, 129, 0.15)",
+              color: "#34d399",
+              fontWeight: "600",
+              cursor: "pointer",
+            }}
+            title="Open 16-Point + 4-Point Independent Validation Wizard"
+          >
+            🚀 16-Point Wizard
           </button>
           <button
             onClick={() => setShowDiagnostics(true)}
@@ -891,7 +918,7 @@ export default function Dashboard() {
               <div>Frontend: <span style={{ color: "#34d399" }}>ONLINE</span></div>
               <div>Backend: <span style={{ color: health?.status !== "OFFLINE" ? "#34d399" : "#f87171" }}>{health?.status || "HEALTHY"}</span></div>
               <div>Backend Version: <span style={{ color: "#60a5fa" }}>{health?.version || "2.5.0"}</span></div>
-              <div>Backend Executable: <span style={{ color: "#60a5fa" }}>{health?.executable ? health.executable.split(/[\/\\]/).pop() : "backend.exe"}</span></div>
+              <div>Backend Executable: <span style={{ color: "#60a5fa" }}>{health?.executable ? health.executable.split(/[/\\]/).pop() : "backend.exe"}</span></div>
               <div>App Resolver: <span style={{ color: "#34d399" }}>{health?.resolver || "universal_v2.5.0"}</span></div>
               <div>API Target: <span style={{ color: "#60a5fa" }}>http://127.0.0.1:8000</span></div>
               <div>WebSocket Target: <span style={{ color: "#60a5fa" }}>ws://127.0.0.1:8000/ws/events</span></div>
@@ -1140,8 +1167,8 @@ export default function Dashboard() {
               </div>
 
               <div style={{ fontSize: "0.85rem", color: "#9ca3af", margin: "0.5rem 0 1rem 0", display: "flex", justifyContent: "center", gap: "1.25rem" }}>
-                <span>Camera: <strong style={{ color: calibStatus !== "CALIBRATION_FAILED" ? "#34d399" : "#f87171" }}>{calibStatus === "CAMERA_STARTING" ? "Starting..." : calibStatus === "CALIBRATION_FAILED" ? "Unavailable" : "Ready"}</strong></span>
-                <span>Face Tracking: <strong style={{ color: "#34d399" }}>{worldSnapshot?.person?.name ? "Detected" : "Active"}</strong></span>
+                <span>Camera: <strong style={{ color: cameraStatus === "Ready" ? "#34d399" : cameraStatus === "Starting..." ? "#facc15" : "#f87171" }}>{cameraStatus === "Starting..." ? "Starting..." : cameraStatus === "Ready" ? "Ready" : "Unavailable"}</strong></span>
+                <span>Face Tracking: <strong style={{ color: cameraStatus === "Ready" && (worldSnapshot?.person?.name || calibStatus === "CALIBRATING") ? "#34d399" : "#facc15" }}>{cameraStatus !== "Ready" ? "Standby" : (worldSnapshot?.person?.name ? "Detected" : (calibStatus === "CALIBRATING" ? "Active" : "Searching"))}</strong></span>
               </div>
 
               {calibStatus === "CAMERA_STARTING" && (
@@ -1240,22 +1267,45 @@ export default function Dashboard() {
                 )}
 
                 {calibStatus === "CALIBRATION_FAILED" && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleStartCalibration(); }}
-                    style={{
-                      padding: "0.6rem 1.4rem",
-                      borderRadius: "8px",
-                      background: "#2563eb",
-                      border: "none",
-                      color: "#fff",
-                      fontWeight: "600",
-                      fontSize: "0.9rem",
-                      cursor: "pointer",
-                      pointerEvents: "auto",
-                    }}
-                  >
-                    🔄 Retry Calibration
-                  </button>
+                  <>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleStartCalibration(); }}
+                      style={{
+                        padding: "0.6rem 1.4rem",
+                        borderRadius: "8px",
+                        background: "#2563eb",
+                        border: "none",
+                        color: "#fff",
+                        fontWeight: "600",
+                        fontSize: "0.9rem",
+                        cursor: "pointer",
+                        pointerEvents: "auto",
+                      }}
+                    >
+                      🔄 Retry Calibration
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleCloseCalibration(false);
+                        window.location.hash = "#/calibration";
+                      }}
+                      style={{
+                        padding: "0.6rem 1.4rem",
+                        borderRadius: "8px",
+                        background: "rgba(16, 185, 129, 0.2)",
+                        border: "1px solid #10b981",
+                        color: "#34d399",
+                        fontWeight: "600",
+                        fontSize: "0.9rem",
+                        cursor: "pointer",
+                        pointerEvents: "auto",
+                      }}
+                      title="Switch to the 16-Point + 4-Point Validation Calibration Wizard"
+                    >
+                      🚀 Open 16-Point Wizard
+                    </button>
+                  </>
                 )}
 
                 <button

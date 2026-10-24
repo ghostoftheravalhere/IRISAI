@@ -8,6 +8,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from backend.core.config.settings import DATASET_DIR
 from backend.datasets.gaze.schema import GazeSampleMetadata
 from backend.utils.logger import get_logger
 
@@ -17,17 +18,26 @@ logger = get_logger(__name__)
 class GazeDatasetStorage:
     """Manages directory hierarchy, eye image crop saves, and JSONL metadata records."""
 
-    def __init__(self, base_dir: Path | str = "dataset/gaze") -> None:
-        self._base_dir = Path(base_dir)
-        self._base_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, base_dir: Path | str | None = None) -> None:
+        if base_dir is None:
+            self._base_dir = DATASET_DIR / "gaze"
+        else:
+            self._base_dir = Path(base_dir)
+        try:
+            self._base_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            logger.warning("Could not create gaze dataset base dir %s: %s", self._base_dir, exc)
 
     def get_session_dir(self, user_id: str, session_id: str) -> Path:
         """Return path to session directory: base_dir/user_<id>/session_<id>/."""
         clean_user = "".join(c for c in user_id if c.isalnum() or c in ("_", "-")) or "default"
         clean_session = "".join(c for c in session_id if c.isalnum() or c in ("_", "-")) or "default"
         session_dir = self._base_dir / f"user_{clean_user}" / f"session_{clean_session}"
-        session_dir.mkdir(parents=True, exist_ok=True)
-        (session_dir / "images").mkdir(parents=True, exist_ok=True)
+        try:
+            session_dir.mkdir(parents=True, exist_ok=True)
+            (session_dir / "images").mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            logger.warning("Could not create gaze dataset session dir %s: %s", session_dir, exc)
         return session_dir
 
     def save_sample(

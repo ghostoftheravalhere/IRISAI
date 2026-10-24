@@ -1,229 +1,714 @@
-.container {
-  min-height: 100vh;
-  background: #0a0a0f;
-  color: #e8e8ff;
+/* =========================================================================
+   IRIS AI — Fullscreen Eye Calibration Surface & Floating Panel Stylesheet
+   Step 2–5: Dedicated 100vw × 100vh calibration target surface with an
+   independent, movable floating control panel inspired by the 9-point wizard.
+   ========================================================================= */
+
+/* -------------------------------------------------------------------------
+   1. Dedicated Fullscreen Calibration Surface (Root Viewport Container)
+   ------------------------------------------------------------------------- */
+.surface {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 12%, #131627 0%, #080911 100%);
+  color: #f8fafc;
+  user-select: none;
+  z-index: 9999;
+  pointer-events: auto;
+  box-sizing: border-box;
 }
 
-.overlay {
-  display: grid;
-  grid-template-rows: auto auto 1fr auto;
-  gap: 1.25rem;
-  min-height: 100vh;
-  padding: 2rem;
+/* -------------------------------------------------------------------------
+   2. Target Layer (Dedicated Full-Viewport Coordinate Surface)
+   ------------------------------------------------------------------------- */
+.targetLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
 }
 
-.header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1.5rem;
+/* Subtle background central crosshair guides */
+.crosshairH {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.04);
+  pointer-events: none;
 }
 
-.eyebrow {
-  margin: 0 0 0.4rem;
-  color: #7c7ca0;
+.crosshairV {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+}
+
+/* Validation Phase Banner Notice across top of viewport */
+.validationPhaseNotice {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  background: rgba(6, 182, 212, 0.16);
+  backdrop-filter: blur(8px);
+  padding: 0.35rem 1.15rem;
+  border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  color: #67e8f9;
+  border: 1px solid rgba(6, 182, 212, 0.45);
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.25);
+  pointer-events: none;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.title {
-  margin: 0;
-  color: #f4f4ff;
-  font-size: 1.55rem;
-  font-weight: 700;
+/* -------------------------------------------------------------------------
+   3. Target Markers (Positioned via authoritative normalized coordinates)
+   ------------------------------------------------------------------------- */
+.targetMarker,
+.targetPoint {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: default;
+  padding: 0;
+  z-index: 10001;
+  pointer-events: auto;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.progressPanel {
-  display: grid;
-  gap: 0.5rem;
-  width: min(280px, 34vw);
+.targetMarkerActive,
+.targetPointActive {
+  cursor: pointer;
+  z-index: 10003;
 }
 
-.progressText {
-  color: #d7d7ff;
-  font-size: 1rem;
-  font-weight: 700;
-  text-align: right;
+.targetMarkerActive:hover,
+.targetPointActive:hover {
+  transform: translate(-50%, -50%) scale(1.15);
 }
 
-.progressTrack {
+/* Circular Training Targets */
+.pointDot {
+  width: 24px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.25s ease;
+}
+
+/* Pinpoint Inactive Fixation Center Core */
+.pointDot::before {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #ffffff;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.55;
+  transition: all 0.2s ease;
+}
+
+/* Completed Training Target: Crisp Emerald Green with Checkmark */
+.targetDone .pointDot,
+.pointDone .pointDot {
+  width: 26px;
+  height: 26px;
+  background: #10b981;
+  border-color: #6ee7b7;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.55);
+}
+
+.targetDone .pointDot::before,
+.pointDone .pointDot::before {
+  display: none;
+}
+
+.targetDone .pointDot::after,
+.pointDone .pointDot::after {
+  content: "✓";
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1;
+}
+
+/* Active Training Target: Vibrant Electric Cyan-Blue Beacon with High-Contrast White Core */
+.targetActive .pointDot,
+.pointActive .pointDot {
+  width: 44px;
+  height: 44px;
+  background: radial-gradient(circle, #60a5fa 30%, #2563eb 80%);
+  border: 3px solid #ffffff;
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.95), 0 0 48px rgba(37, 99, 235, 0.55);
+  animation: pulseTraining 1.3s ease-in-out infinite;
+}
+
+.targetActive .pointDot::before,
+.pointActive .pointDot::before {
+  width: 10px;
   height: 10px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 8px #ffffff, 0 0 14px rgba(255, 255, 255, 0.9);
+  opacity: 1;
+  z-index: 4;
+}
+
+/* Distinct Validation Point: Rotated Diamond with Cyan Accent */
+.validationDot {
+  width: 24px;
+  height: 24px;
+  background: rgba(6, 182, 212, 0.12);
+  border: 2px dashed rgba(6, 182, 212, 0.5);
+  border-radius: 4px;
+  transform: rotate(45deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: all 0.25s ease;
+}
+
+.validationDot::before {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #67e8f9;
+  border-radius: 1px;
+  pointer-events: none;
+  opacity: 0.55;
+  transition: all 0.2s ease;
+}
+
+.validationDone .validationDot {
+  width: 26px;
+  height: 26px;
+  background: #0284c7;
+  border: 2px solid #7dd3fc;
+  box-shadow: 0 0 16px rgba(14, 165, 233, 0.6);
+}
+
+.validationDone .validationDot::before {
+  display: none;
+}
+
+.validationDone .validationDot::after {
+  content: "✓";
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+  transform: rotate(-45deg);
+  line-height: 1;
+}
+
+.validationActive .validationDot {
+  width: 44px;
+  height: 44px;
+  background: #06b6d4;
+  border: 3px solid #ffffff;
+  box-shadow: 0 0 32px rgba(6, 182, 212, 0.95), 0 0 54px rgba(6, 182, 212, 0.45);
+  animation: pulseValidation 1.2s ease-in-out infinite;
+}
+
+.validationActive .validationDot::before {
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  border-radius: 1px;
+  box-shadow: 0 0 8px #ffffff, 0 0 14px rgba(103, 232, 249, 0.9);
+  opacity: 1;
+  z-index: 4;
+}
+
+.pointBadge {
+  position: absolute;
+  top: 100%;
+  margin-top: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(4px);
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.validationBadge {
+  color: #67e8f9;
+  border-color: rgba(6, 182, 212, 0.35);
+  background: rgba(6, 78, 99, 0.85);
+}
+
+/* -------------------------------------------------------------------------
+   4. Floating Movable Controller Panel (Inspired by 9-Point HUD Overlay)
+   ------------------------------------------------------------------------- */
+.floatingPanel {
+  position: fixed;
+  z-index: 10002;
+  width: 360px;
+  max-width: calc(100vw - 24px);
+  background: rgba(17, 24, 39, 0.95);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  border-radius: 12px;
+  box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.6), 0 8px 16px -6px rgba(59, 130, 246, 0.25);
+  color: #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  pointer-events: auto;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+/* Dedicated Drag Handle */
+.dragHandle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: rgba(59, 130, 246, 0.14);
+  border-bottom: 1px solid rgba(96, 165, 250, 0.25);
+  border-top-left-radius: 11px;
+  border-top-right-radius: 11px;
+  cursor: grab;
+  user-select: none;
+}
+
+.dragging {
+  cursor: grabbing !important;
+}
+
+.dragHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.dragGrip {
+  font-size: 1.1rem;
+  opacity: 0.6;
+  color: #93c5fd;
+  line-height: 1;
+}
+
+.panelTitle {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #93c5fd;
+  white-space: nowrap;
   overflow: hidden;
-  background: #1e1e2e;
-  border: 1px solid #303047;
+  text-overflow: ellipsis;
+}
+
+.phaseBadge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+/* Panel Body */
+.panelBody {
+  padding: 0.75rem 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.targetInfo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.targetTitle {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.targetStep {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #93c5fd;
+  background: rgba(59, 130, 246, 0.18);
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.guidanceRow {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+}
+
+.guidanceDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.guidanceText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+/* Mini Progress Track inside Panel */
+.progressTrack {
+  height: 6px;
+  overflow: hidden;
+  background: #1a1e2e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
 }
 
 .progressFill {
   height: 100%;
-  background: #22c55e;
-  transition: width 0.25s ease;
+  background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+  border-radius: 999px;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
 }
 
-.statusBar {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
+.progressFillValidation {
+  background: linear-gradient(90deg, #0284c7 0%, #06b6d4 100%);
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.5);
 }
 
-.statusBar > div {
-  display: grid;
-  gap: 0.35rem;
-  padding: 0.9rem 1rem;
-  background: #13131a;
-  border: 1px solid #2a2a3a;
-  border-radius: 0.5rem;
+/* Error Notice Banner inside Panel */
+.panelError {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid #ef4444;
+  border-radius: 6px;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.78rem;
+  color: #fca5a5;
+  line-height: 1.35;
+  text-align: left;
 }
 
-.statusLabel {
-  color: #747494;
-  font-size: 0.72rem;
+/* Compact Validation Results Summary */
+.validationSummary {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.validationSummaryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.76rem;
   font-weight: 700;
-  letter-spacing: 0.08em;
+}
+
+.statusPass {
+  color: #34d399;
+}
+
+.statusFail {
+  color: #f87171;
+}
+
+.validationGridMini {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.45rem;
+}
+
+.validationItemMini {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.validationItemLabel {
+  font-size: 0.65rem;
+  color: #818cf8;
   text-transform: uppercase;
+  font-weight: 700;
 }
 
-.statusBar strong {
-  color: #e8e8ff;
-  font-size: 0.96rem;
+.validationItemValue {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #f8fafc;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(96px, 1fr));
-  grid-template-rows: repeat(3, minmax(96px, 1fr));
-  gap: 1rem;
-  min-height: 0;
+.validationItemLimit {
+  font-size: 0.64rem;
+  color: #64748b;
 }
 
-.pointCell {
-  display: grid;
-  place-items: center;
-  min-width: 0;
-  min-height: 0;
-  background: #101018;
-  border: 1px solid #27273a;
-  border-radius: 0.5rem;
-  cursor: default;
-}
-
-.pointCell:disabled {
-  opacity: 1;
-}
-
-.pointDot {
-  width: 28px;
-  height: 28px;
-  background: #6b6b8a;
-  border: 3px solid #9a9aba;
-  border-radius: 50%;
-  transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.pointDone .pointDot {
-  background: #22c55e;
-  border-color: #bbf7d0;
-  box-shadow: 0 0 18px rgba(34, 197, 94, 0.45);
-}
-
-.pointActive {
-  border-color: #f8fafc;
+.btnDetailsToggle {
+  background: transparent;
+  border: none;
+  color: #60a5fa;
+  font-size: 0.74rem;
+  font-weight: 600;
   cursor: pointer;
+  text-align: right;
+  padding: 0;
+  text-decoration: underline;
 }
 
-.pointActive .pointDot {
-  width: 42px;
-  height: 42px;
-  background: #ef4444;
-  border-color: #fff;
-  box-shadow: 0 0 28px rgba(239, 68, 68, 0.85);
-  animation: pulse 1s ease-in-out infinite;
+.validationDetailsPanel {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 0.4rem;
 }
 
-.error {
-  margin: 0;
-  padding: 0.75rem 1rem;
-  color: #fecaca;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  border-radius: 0.5rem;
+.validationTargetItem {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 4px;
+  padding: 0.25rem 0.35rem;
+  text-align: center;
 }
 
+.validationTargetTitle {
+  font-size: 0.65rem;
+  color: #94a3b8;
+}
+
+.validationTargetVal {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* Panel Actions Row */
+.panelActions,
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  justify-content: center;
+  gap: 0.45rem;
+  align-items: center;
 }
 
 .btnPrimary,
 .btnSecondary,
 .btnGhost,
-.btnEnable {
-  min-width: 132px;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
+.btnEnable,
+.btnDanger {
+  padding: 0.55rem 0.85rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  text-decoration: none;
+  font-family: inherit;
+  flex: 1;
+  min-width: 90px;
 }
 
 .btnPrimary {
-  background: #4f46e5;
-  color: #fff;
+  background: #2563eb;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: #1d4ed8;
+  transform: translateY(-1px);
 }
 
 .btnSecondary {
-  background: #1e1e2e;
-  color: #d7d7ff;
-  border: 1px solid #3a3a4a;
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.btnSecondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
 }
 
 .btnGhost {
   background: transparent;
-  color: #a4a4c4;
-  border: 1px solid #303047;
+  color: #94a3b8;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.btnGhost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: #f1f5f9;
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .btnEnable {
-  background: #16a34a;
-  color: #fff;
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.4);
+  width: 100%;
+  flex: none;
 }
 
-@keyframes pulse {
-  0%,
-  100% {
+.btnEnable:hover:not(:disabled) {
+  background: linear-gradient(135deg, #047857 0%, #059669 100%);
+  transform: translateY(-1px);
+}
+
+.btnPrimary:disabled,
+.btnSecondary:disabled,
+.btnGhost:disabled,
+.btnEnable:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Keyboard Hints Footer inside Panel */
+.panelHints,
+.keyboardHints {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: #6b7280;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 0.35rem 0.75rem;
+}
+
+.panelHints kbd,
+.keyboardHints kbd {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 0.08rem 0.35rem;
+  color: #cbd5e1;
+  font-family: inherit;
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------------------
+   5. Fallback Rules for Backwards Compatibility with Tests
+   ------------------------------------------------------------------------- */
+.container {
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.scrollWrapper {
+  min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.overlay {
+  min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.stage {
+  width: 100%;
+  flex: 1;
+  min-height: 400px;
+}
+
+/* -------------------------------------------------------------------------
+   6. Micro-Animations & Preferences
+   ------------------------------------------------------------------------- */
+@keyframes pulseTraining {
+  0%, 100% {
     transform: scale(1);
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.8), 0 0 40px rgba(37, 99, 235, 0.4);
   }
   50% {
-    transform: scale(1.18);
+    transform: scale(1.12);
+    box-shadow: 0 0 32px rgba(96, 165, 250, 1), 0 0 60px rgba(59, 130, 246, 0.6);
   }
 }
 
-@media (max-width: 760px) {
-  .overlay {
-    padding: 1rem;
+@keyframes pulseValidation {
+  0%, 100% {
+    transform: rotate(45deg) scale(1);
+    box-shadow: 0 0 24px rgba(6, 182, 212, 0.8), 0 0 44px rgba(6, 182, 212, 0.4);
   }
-
-  .header,
-  .statusBar {
-    grid-template-columns: 1fr;
+  50% {
+    transform: rotate(45deg) scale(1.15);
+    box-shadow: 0 0 38px rgba(103, 232, 249, 1), 0 0 64px rgba(6, 182, 212, 0.65);
   }
+}
 
-  .header {
-    display: grid;
+@media (prefers-reduced-motion: reduce) {
+  .targetActive .pointDot,
+  .pointActive .pointDot,
+  .validationActive .validationDot {
+    animation: none !important;
   }
-
-  .progressPanel {
-    width: 100%;
-  }
-
-  .progressText {
-    text-align: left;
-  }
-
-  .grid {
-    gap: 0.65rem;
-    grid-template-columns: repeat(3, minmax(72px, 1fr));
-    grid-template-rows: repeat(3, minmax(72px, 1fr));
+  .targetMarker,
+  .targetPoint {
+    transition: none !important;
   }
 }

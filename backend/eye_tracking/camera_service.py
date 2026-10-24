@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from threading import Event, RLock, Thread
-from time import sleep
+from time import monotonic, sleep, time
 from typing import TYPE_CHECKING
 
 import cv2
@@ -74,6 +74,8 @@ class CameraService:
         self._processing_thread: Thread | None = None
         self._stop_event = Event()
         self._lock = RLock()
+        self._last_frame_time: float = 0.0
+        self._has_received_frames: bool = False
 
     def start(self) -> dict[str, bool | int]:
         """Start the webcam capture and return the latest camera status."""
@@ -113,6 +115,8 @@ class CameraService:
             self._release_capture()
             self._latest_jpeg = None
             self._latest_eye_data = None
+            self._last_frame_time = 0.0
+            self._has_received_frames = False
             logger.info("Camera stopped on index %d", self._index)
             return self.status()
 
@@ -129,6 +133,8 @@ class CameraService:
                 self._release_capture()
                 self._latest_jpeg = None
                 self._latest_eye_data = None
+                self._last_frame_time = 0.0
+                self._has_received_frames = False
                 logger.info("Camera resources released during shutdown.")
             self._face_mesh.close()
 
@@ -193,6 +199,11 @@ class CameraService:
         """Return camera connection and capture status."""
         with self._lock:
             running = self.is_running
+            if running and self._has_received_frames and self._last_frame_time > 0.0:
+                # If capture was producing frames but none have arrived in the last 2.5s, capture has stalled
+                if (monotonic() - self._last_frame_time) > 2.5:
+                    running = False
+
             return {
                 "connected": running or self._last_known_connected,
                 "running": running,
@@ -202,6 +213,12 @@ class CameraService:
     def get_latest_eye_data(self) -> EyeData | None:
         """Return the latest normalized eye landmark data, if available."""
         with self._lock:
+            if not self.is_running:
+                return None
+            if self._has_received_frames and self._last_frame_time > 0.0:
+                if (monotonic() - self._last_frame_time) > 1.5:
+                    # Do not report stale eye landmarks indefinitely when frames stop arriving
+                    return None
             return self._latest_eye_data
 
     def collect_calibration_eye_samples(
@@ -217,8 +234,6 @@ class CameraService:
         Performs a short stabilization wait, then polls ``get_latest_eye_data``
         so calibration never contends with the processing thread for ``read()``.
         """
-        from time import monotonic
-
         count = (
             self._eye_config.calibration_sample_count
             if sample_count is None
@@ -289,6 +304,30 @@ class CameraService:
             settle_ms,
             max_ms,
         )
+
+        if len(samples) < count:
+            now = monotonic()
+            has_recent = (self._last_frame_time > 0.0 and (now - self._last_frame_time) < 2.0)
+            if not self.is_running or (self._has_received_frames and not has_recent) or total_polls == 0:
+                raise CameraServiceError(
+                    "Camera frames are unavailable from the video capture stream.",
+                    status_code=409,
+                )
+            if face_polls == 0:
+                raise CameraServiceError(
+                    "No face detected in camera stream. Position your face in front of the camera.",
+                    status_code=409,
+                )
+            if len(samples) == 0:
+                raise CameraServiceError(
+                    "Eyes not detected or closed. Look directly at the target with eyes open.",
+                    status_code=409,
+                )
+            raise CameraServiceError(
+                f"Insufficient gaze samples collected ({len(samples)}/{count}). Keep your head steady and look directly at the target.",
+                status_code=409,
+            )
+
         return samples
 
     def _stop_processing_loop(self) -> None:
@@ -323,6 +362,8 @@ class CameraService:
                     continue
 
                 with self._lock:
+                    self._last_frame_time = monotonic()
+                    self._has_received_frames = True
                     self._latest_jpeg = buffer.tobytes()
         finally:
             logger.info("Camera processing loop stopped on index %d.", self._index)
@@ -385,6 +426,7 @@ class CameraService:
                 tracking_confidence=tracking_confidence,
                 face_detected=face_detected,
                 blink_state=blink_state,
+                eye_data=result.eye_data,
             )
             return self._draw_debug_overlay(
                 frame=result.frame,
@@ -481,6 +523,7 @@ class CameraService:
         tracking_confidence: float = 1.0,
         face_detected: bool = True,
         blink_state: BlinkState | None = None,
+        eye_data: EyeData | None = None,
     ) -> CursorControllerState | None:
         """Update cursor movement from latest gaze, blink, and action state when configured."""
         with self._lock:
@@ -495,6 +538,7 @@ class CameraService:
                 tracking_confidence=tracking_confidence,
                 face_detected=face_detected,
                 blink_state=blink_state,
+                eye_data=eye_data,
             )
         except Exception:
             logger.exception("Cursor update failed.")
@@ -557,6 +601,8 @@ class CameraService:
             self._release_capture()
             self._latest_jpeg = None
             self._latest_eye_data = None
+            self._last_frame_time = 0.0
+            self._has_received_frames = False
         self.reset_interaction_pipeline()
 
     def _release_capture(self) -> None:

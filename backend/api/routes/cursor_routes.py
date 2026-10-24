@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from backend.services.system_cursor import system_cursor
@@ -50,6 +50,15 @@ class CursorClickRequest(BaseModel):
 async def toggle_cursor(request: Request, body: CursorToggleRequest | None = None) -> dict[str, Any]:
     """Enable/disable OS-level cursor takeover."""
     explicit_state = body.enabled if body else None
+    target_state = not system_cursor.enabled if explicit_state is None else bool(explicit_state)
+
+    calib_svc = getattr(request.app.state, "eye_calibration", None)
+    if target_state and calib_svc is not None and not getattr(calib_svc, "is_calibrated", False):
+        raise HTTPException(
+            status_code=409,
+            detail="Calibration is not authorized. Recalibrate, then try enabling cursor again.",
+        )
+
     new_state = system_cursor.toggle(explicit_state)
     cursor_ctrl = getattr(request.app.state, "cursor_controller", None)
     if cursor_ctrl is not None:
@@ -57,7 +66,8 @@ async def toggle_cursor(request: Request, body: CursorToggleRequest | None = Non
             cursor_ctrl.enable()
         else:
             cursor_ctrl.disable()
-    return system_cursor.get_status()
+    status = system_cursor.get_status()
+    return status
 
 
 @router.get("/status", response_model=CursorStatusResponse)
@@ -66,7 +76,8 @@ async def get_cursor_status(request: Request) -> dict[str, Any]:
     status = system_cursor.get_status()
     cursor_ctrl = getattr(request.app.state, "cursor_controller", None)
     if cursor_ctrl is not None:
-        status["enabled"] = bool(system_cursor.enabled or cursor_ctrl.get_state().enabled)
+        ctrl_state = cursor_ctrl.get_state()
+        status["enabled"] = bool(system_cursor.enabled or ctrl_state.enabled)
         status["active"] = status["enabled"]
     return status
 
@@ -93,3 +104,35 @@ async def click_cursor(body: CursorClickRequest) -> dict[str, Any]:
         "button": body.button,
         "enabled": system_cursor.enabled,
     }
+
+
+class CursorRecalibrateRequest(BaseModel):
+    """Optional payload for cursor recalibration."""
+
+    neutral_x: float | None = None
+    neutral_y: float | None = None
+
+
+@router.post("/recalibrate")
+async def recalibrate_cursor(request: Request, body: CursorRecalibrateRequest | None = None) -> dict[str, Any]:
+    """Recalibrate gaze neutral center and resting baseline for cursor controller."""
+    nx = body.neutral_x if body else None
+    ny = body.neutral_y if body else None
+
+    cursor_ctrl = getattr(request.app.state, "cursor_controller", None)
+    gaze_srv = getattr(request.app.state, "gaze_service", None)
+    if cursor_ctrl is not None and gaze_srv is None:
+        gaze_srv = getattr(cursor_ctrl, "_gaze_service", None)
+
+    cal_x, cal_y = 0.50, 0.58
+    if cursor_ctrl is not None:
+        cal_x, cal_y = cursor_ctrl.recalibrate_center(nx, ny)
+    elif gaze_srv is not None and hasattr(gaze_srv, "recalibrate_center"):
+        cal_x, cal_y = gaze_srv.recalibrate_center(nx, ny)
+
+    return {
+        "status": "recalibrated",
+        "neutral_x": round(cal_x, 4),
+        "neutral_y": round(cal_y, 4),
+    }
+

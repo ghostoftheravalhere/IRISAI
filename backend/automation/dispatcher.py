@@ -115,6 +115,17 @@ class AutomationDispatcher:
                 logger.info("Voice browser search result: %s success=%s", message, success)
                 return AutomationResult(success, intent, message)
 
+            if intent == VoiceIntentType.DOCUMENT_SEARCH:
+                query = voice_intent.query or voice_intent.text
+                from backend.features.document_search import document_search_service
+                document_search_service.search_async(query)
+                return AutomationResult(True, intent, f"Searching documents for {query}.")
+
+            if intent == VoiceIntentType.OPEN_FILE:
+                from backend.features.document_search import document_search_service
+                success = document_search_service.open_latest_top_result()
+                return AutomationResult(success, intent, "Opening file." if success else "No document search results to open.")
+
             if intent == VoiceIntentType.HOTKEY:
                 keys = voice_intent.params.get("keys", ["ctrl", "l"]) if voice_intent.params else ["ctrl", "l"]
                 success = self._desktop_controller.hotkey(*keys)

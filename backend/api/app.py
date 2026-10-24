@@ -4,11 +4,13 @@ Creates and configures the FastAPI app with all routers and middleware.
 """
 import asyncio
 from contextlib import asynccontextmanager
+import gc
+import os
 import sys
 import time
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import (
@@ -173,6 +175,56 @@ def create_app() -> FastAPI:
             except Exception:
                 pass
         return base_status
+
+    @app.post("/api/v1/shutdown")
+    @app.post("/shutdown")
+    async def shutdown_endpoint(request: Request):
+        """Initiate graceful server shutdown."""
+        client_host = request.client.host if request.client else ""
+        if client_host not in ("127.0.0.1", "::1", "localhost", "testclient"):
+            raise HTTPException(status_code=403, detail="Localhost access only")
+
+        async def _graceful_exit():
+            # Allow HTTP 200 response to flush back to the client
+            await asyncio.sleep(0.1)
+            logger.info("[SHUTDOWN] Programmatic graceful shutdown requested via HTTP. Signaling Uvicorn...")
+
+            # 1. Check if server instance is attached to app.state
+            server = getattr(request.app.state, "server", None)
+            if server is not None:
+                server.should_exit = True
+                return
+
+            # 2. Check gc for active uvicorn.Server instance
+            try:
+                import uvicorn
+                for obj in gc.get_objects():
+                    if isinstance(obj, uvicorn.Server):
+                        obj.should_exit = True
+                        return
+            except Exception as e:
+                logger.warning("[SHUTDOWN] Failed to locate uvicorn.Server in gc: %s", e)
+
+            # 3. Fallback: manually trigger component cleanup and bounded exit
+            try:
+                if hasattr(request.app.state, "lifecycle_manager"):
+                    request.app.state.lifecycle_manager.shutdown(reason="http_shutdown")
+                if hasattr(request.app.state, "voice") and request.app.state.voice is not None:
+                    request.app.state.voice.stop()
+                if hasattr(request.app.state, "camera") and request.app.state.camera is not None:
+                    request.app.state.camera.cleanup()
+            except Exception as e:
+                logger.error("[SHUTDOWN] Error during component cleanup: %s", e)
+            finally:
+                await asyncio.sleep(0.5)
+                os._exit(0)
+
+        asyncio.create_task(_graceful_exit())
+        return {
+            "status": "shutting_down",
+            "message": "IRIS AI backend graceful shutdown initiated",
+            "pid": os.getpid(),
+        }
 
     @app.get("/api/v1/diagnostics")
     async def get_diagnostics():

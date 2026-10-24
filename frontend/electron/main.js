@@ -16,6 +16,7 @@ const backendManager = new BackendManager();
 let splashWindow = null;
 let mainWindow = null;
 let isQuitting = false;
+let isShuttingDown = false;
 
 function createSplashWindow() {
   const possibleSplashPaths = [
@@ -155,6 +156,15 @@ function createWindow() {
     });
   }
 
+  mainWindow.on("close", (event) => {
+    if (isShuttingDown) {
+      return;
+    }
+    event.preventDefault();
+    logProd("[ELECTRON] Window close (X button) intercepted. Starting graceful shutdown sequence...");
+    initiateApplicationShutdown();
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -166,8 +176,10 @@ ipcMain.handle("backend:get-status", () => {
 });
 
 ipcMain.handle("backend:start", async () => {
+  if (isShuttingDown) {
+    return { success: false, error: "Application is currently shutting down" };
+  }
   try {
-    backendManager.killBackend();
     await backendManager.start();
     return { success: true };
   } catch (err) {
@@ -176,9 +188,11 @@ ipcMain.handle("backend:start", async () => {
 });
 
 ipcMain.handle("backend:restart", async () => {
+  if (isShuttingDown) {
+    return { success: false, error: "Application is currently shutting down" };
+  }
   try {
-    backendManager.killBackend();
-    await backendManager.start();
+    await backendManager.restart();
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -186,13 +200,8 @@ ipcMain.handle("backend:restart", async () => {
 });
 
 ipcMain.handle("app:quit", async () => {
-  console.log("[ELECTRON] Self-close IPC invoked ('Close IRIS'); closing application...");
-  cleanupAndKillBackend();
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.close();
-  } else {
-    app.quit();
-  }
+  logProd("[ELECTRON] Self-close IPC invoked ('Close IRIS'); starting graceful application shutdown...");
+  await initiateApplicationShutdown();
   return { success: true };
 });
 
@@ -227,10 +236,46 @@ backendManager.onStatusChange = (statusState) => {
   }
 };
 
+async function initiateApplicationShutdown() {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+  isQuitting = true;
+
+  logProd("[ELECTRON] Application shutdown initiated. Stopping renderer activity...");
+
+  // Halt active renderer activity/polling
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.webContents.stop();
+    } catch (e) {}
+  }
+
+  closeSplashWindow();
+
+  try {
+    logProd("[ELECTRON] Calling backendManager.stop()...");
+    await backendManager.stop();
+    logProd("[ELECTRON] Backend shutdown cleanly concluded.");
+  } catch (err) {
+    logProd(`[ELECTRON ERROR] Error stopping backend: ${err.message}`);
+  } finally {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.removeAllListeners("close");
+      mainWindow.destroy();
+      mainWindow = null;
+    }
+    app.quit();
+  }
+}
+
 function cleanupAndKillBackend() {
   try {
     closeSplashWindow();
-    backendManager.killBackend();
+    if (backendManager.childProcess && backendManager.childProcess.pid) {
+      backendManager.forceKillProcessTree(backendManager.childProcess.pid);
+    }
   } catch (e) {
     console.error("[ELECTRON] Error in cleanupAndKillBackend:", e);
   }
@@ -242,16 +287,19 @@ app.whenReady().then(async () => {
   try {
     await backendManager.start();
   } catch (err) {
-    console.error("[ELECTRON CRITICAL] Startup failed:", err.message);
+    logProd(`[ELECTRON CRITICAL] Startup failed: ${err.message}`);
   } finally {
-    createWindow();
+    if (!isShuttingDown) {
+      createWindow();
+    }
   }
 });
 
-app.on("before-quit", () => {
-  if (isQuitting) return;
-  isQuitting = true;
-  cleanupAndKillBackend();
+app.on("before-quit", (event) => {
+  if (!isShuttingDown) {
+    event.preventDefault();
+    initiateApplicationShutdown();
+  }
 });
 
 app.on("will-quit", () => {
@@ -259,9 +307,8 @@ app.on("will-quit", () => {
 });
 
 app.on("window-all-closed", () => {
-  cleanupAndKillBackend();
-  if (process.platform !== "darwin") {
-    app.quit();
+  if (!isShuttingDown) {
+    initiateApplicationShutdown();
   }
 });
 
@@ -270,13 +317,11 @@ process.on("exit", () => {
 });
 
 process.on("SIGINT", () => {
-  cleanupAndKillBackend();
-  process.exit(0);
+  initiateApplicationShutdown().finally(() => process.exit(0));
 });
 
 process.on("SIGTERM", () => {
-  cleanupAndKillBackend();
-  process.exit(0);
+  initiateApplicationShutdown().finally(() => process.exit(0));
 });
 
 app.on("activate", () => {

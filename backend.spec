@@ -30,6 +30,9 @@ hiddenimports = [
     'backend.eye_tracking.click_feedback_overlay',
     'backend.fusion.fusion_engine',
     'backend.services.system_cursor',
+    'backend.services.preflight_service',
+    'backend.security.face_auth_service',
+    'backend.api.routes.auth',
     'backend.vision.head_pose',
     'backend.voice.recognizer',
     'backend.voice.pipeline',
@@ -39,6 +42,13 @@ hiddenimports = [
     'backend.sys_platform.health',
     'backend.sys_platform.diagnostics',
     'backend.core.di.container',
+    'backend.vision.one_euro_filter',
+    'backend.vision.kinematic_physics',
+    'backend.voice.dictation_engine',
+    'backend.voice.system_navigator',
+    'backend.voice.keyboard_injector',
+    'backend.voice.action_engine',
+    'backend.voice.command_engine',
 ]
 
 packages_to_collect = [

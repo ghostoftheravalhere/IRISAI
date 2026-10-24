@@ -96,10 +96,26 @@ class CalibrationMappingResponse(BaseModel):
     quality: CalibrationQualityResponse | None = None
 
 
+class ValidationReportResponse(BaseModel):
+    """Independent validation report API response."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    mean_norm_error: float
+    max_norm_error: float
+    per_target_norm_errors: tuple[float, ...]
+    mean_pixel_error: float | None = None
+    max_pixel_error: float | None = None
+    per_target_pixel_errors: tuple[float, ...] | None = None
+    valid_sample_counts: tuple[int, ...] = ()
+    passed: bool
+    description: str = "preliminary validation (4 held-out targets; not proof of full-screen accuracy)"
+
+
 class CalibrationProgressResponse(BaseModel):
     """Calibration progress API response."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     current_point: CalibrationPointResponse | None
     completed_points: int
@@ -107,12 +123,16 @@ class CalibrationProgressResponse(BaseModel):
     progress: float
     complete: bool
     quality: CalibrationQualityResponse | None = None
+    phase: str = "training"
+    validation_report: ValidationReportResponse | None = None
+    is_calibrated: bool = False
+    mode: str = "16-point"
 
 
 class CalibrationStateResponse(BaseModel):
     """Saved calibration state API response."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     points: tuple[CalibrationPointResponse, ...]
     samples: tuple[CalibrationSampleResponse, ...]
@@ -120,6 +140,9 @@ class CalibrationStateResponse(BaseModel):
     complete: bool
     updated_at: float
     quality: CalibrationQualityResponse | None = None
+    validation_report: ValidationReportResponse | None = None
+    is_calibrated: bool = False
+    mode: str = "16-point"
 
 
 class CursorControllerResponse(BaseModel):
@@ -152,11 +175,57 @@ async def calibration_progress(request: Request) -> dict[str, object]:
     return _serialize_progress(request.app.state.eye_calibration.get_progress())
 
 
+class CalibrationRestartRequest(BaseModel):
+    """Optional payload specifying calibration mode upon restart."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    mode: str | None = None
+
+
 @router.post("/calibration/restart", response_model=CalibrationProgressResponse)
-async def calibration_restart(request: Request) -> dict[str, object]:
-    """Restart eye calibration from the first point."""
+@router.post("/calibration/start", response_model=CalibrationProgressResponse)
+@router.post("/calibrate", response_model=CalibrationProgressResponse)
+async def calibration_restart(
+    request: Request,
+    body: CalibrationRestartRequest | None = None,
+) -> dict[str, object]:
+    """Restart eye calibration from the first point, optionally specifying calibration mode."""
+    mode = body.mode if body else None
     request.app.state.camera.reset_interaction_pipeline()
-    return _serialize_progress(request.app.state.eye_calibration.restart())
+    try:
+        progress = request.app.state.eye_calibration.restart(mode=mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _serialize_progress(progress)
+
+
+class RecalibrateCenterRequest(BaseModel):
+    """Optional payload for center recalibration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    neutral_x: float | None = None
+    neutral_y: float | None = None
+
+
+@router.post("/recalibrate-center")
+async def recalibrate_center(
+    request: Request,
+    body: RecalibrateCenterRequest | None = None,
+) -> dict[str, object]:
+    """Recalibrate gaze neutral center for cursor controller."""
+    cursor_ctrl = getattr(request.app.state, "cursor_controller", None)
+    nx = body.neutral_x if body else None
+    ny = body.neutral_y if body else None
+    cal_x, cal_y = 0.50, 0.58
+    if cursor_ctrl is not None:
+        cal_x, cal_y = cursor_ctrl.recalibrate_center(nx, ny)
+    return {
+        "status": "recalibrated",
+        "neutral_x": round(cal_x, 4),
+        "neutral_y": round(cal_y, 4),
+    }
 
 
 @router.post("/calibration/capture", response_model=CalibrationProgressResponse)
@@ -244,6 +313,23 @@ async def cursor_enable(request: Request) -> dict[str, object]:
             ),
         )
 
+    val_report = getattr(progress, "validation_report", None)
+    if val_report is not None and not getattr(val_report, "passed", True):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Calibration validation gates failed. "
+                "Recalibrate, then try enabling cursor again."
+            ),
+        )
+
+    calib_svc = getattr(request.app.state, "eye_calibration", None)
+    if calib_svc is not None and not getattr(calib_svc, "is_calibrated", False):
+        raise HTTPException(
+            status_code=409,
+            detail="Calibration is not authorized. Recalibrate, then try enabling cursor again.",
+        )
+
     state = request.app.state.cursor_controller.enable()
     logger.info(
         "[DIAGNOSTIC] cursor_enable succeeded: cursor_enabled_after=%s, trackingActive=%s",
@@ -257,12 +343,72 @@ async def cursor_enable(request: Request) -> dict[str, object]:
 async def cursor_disable(request: Request) -> dict[str, object]:
     """Disable cursor control and release drag / tracking state."""
     request.app.state.camera.reset_interaction_pipeline()
-    state = request.app.state.cursor_controller.get_state()
+    state = request.app.state.cursor_controller.disable()
     logger.info(
         "[DIAGNOSTIC] cursor_disable called: cursor_enabled_after=%s",
         state.enabled,
     )
     return _serialize_cursor_state(state)
+
+
+@router.get("/cursor/status", response_model=CursorControllerResponse)
+async def cursor_status(request: Request) -> dict[str, object]:
+    """Return current cursor controller status."""
+    state = request.app.state.cursor_controller.get_state()
+    return _serialize_cursor_state(state)
+
+
+class RecalibrateCenterRequest(BaseModel):
+    """Optional explicit neutral center coordinates."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    neutral_x: float | None = None
+    neutral_y: float | None = None
+
+
+class RecalibrateCenterResponse(BaseModel):
+    """Recalibrate center response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    neutral_x: float
+    neutral_y: float
+    status: str = "recalibrated"
+
+
+@router.post("/recalibrate-center", response_model=RecalibrateCenterResponse)
+@router.post("/cursor/recalibrate-center", response_model=RecalibrateCenterResponse)
+async def recalibrate_center(
+    request: Request,
+    body: RecalibrateCenterRequest | None = None,
+) -> dict[str, object]:
+    """Dynamically re-zero gaze center calibration to comfortable resting eye position."""
+    gaze_service = getattr(request.app.state, "gaze_service", None)
+    if gaze_service is None:
+        cursor_ctrl = getattr(request.app.state, "cursor_controller", None)
+        if cursor_ctrl is not None:
+            gaze_service = getattr(cursor_ctrl, "_gaze_service", None)
+
+    if gaze_service is None or not hasattr(gaze_service, "recalibrate_center"):
+        raise HTTPException(status_code=503, detail="Gaze service not initialized")
+
+    nx = body.neutral_x if body else None
+    ny = body.neutral_y if body else None
+    cal_x, cal_y = gaze_service.recalibrate_center(nx, ny)
+
+    cursor_ctrl = getattr(request.app.state, "cursor_controller", None)
+    if cursor_ctrl is not None and hasattr(cursor_ctrl, "_physics_pipeline"):
+        with cursor_ctrl._lock:
+            if cursor_ctrl._physics_pipeline is not None:
+                cursor_ctrl._physics_pipeline.reset()
+
+    logger.info("Recalibrate center successful: neutral=(%.3f, %.3f)", cal_x, cal_y)
+    return {
+        "neutral_x": round(cal_x, 4),
+        "neutral_y": round(cal_y, 4),
+        "status": "recalibrated",
+    }
 
 
 class OverlayModeRequest(BaseModel):
@@ -349,6 +495,23 @@ async def set_overlay_mode(request: Request, body: OverlayModeRequest) -> dict[s
     return {"mode": active}
 
 
+def _serialize_validation_report(report) -> dict[str, object] | None:
+    """Serialize independent validation report."""
+    if report is None:
+        return None
+    return {
+        "mean_norm_error": report.mean_norm_error,
+        "max_norm_error": report.max_norm_error,
+        "per_target_norm_errors": report.per_target_norm_errors,
+        "mean_pixel_error": report.mean_pixel_error,
+        "max_pixel_error": report.max_pixel_error,
+        "per_target_pixel_errors": report.per_target_pixel_errors,
+        "valid_sample_counts": report.valid_sample_counts,
+        "passed": report.passed,
+        "description": report.description,
+    }
+
+
 def _serialize_progress(progress: CalibrationProgress) -> dict[str, object]:
     """Serialize calibration progress for API responses."""
     return {
@@ -358,6 +521,10 @@ def _serialize_progress(progress: CalibrationProgress) -> dict[str, object]:
         "progress": progress.progress,
         "complete": progress.complete,
         "quality": _serialize_quality(progress.quality),
+        "phase": getattr(progress, "phase", "training"),
+        "validation_report": _serialize_validation_report(getattr(progress, "validation_report", None)),
+        "is_calibrated": getattr(progress, "is_calibrated", False),
+        "mode": getattr(progress, "mode", "16-point"),
     }
 
 
@@ -370,6 +537,9 @@ def _serialize_state(state: CalibrationState) -> dict[str, object]:
         "complete": state.complete,
         "updated_at": state.updated_at,
         "quality": _serialize_quality(state.quality),
+        "validation_report": _serialize_validation_report(getattr(state, "validation_report", None)),
+        "is_calibrated": getattr(state, "is_calibrated", False),
+        "mode": getattr(state, "mode", "16-point"),
     }
 
 

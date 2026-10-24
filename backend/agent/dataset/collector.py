@@ -11,6 +11,7 @@ from typing import Any
 from backend.agent.dataset.redactor import SecretRedactor
 from backend.agent.dataset.schema import DatasetCategory, EvaluationSplit, InteractionRecord
 from backend.agent.task_state import TaskState
+from backend.core.config.settings import DATASET_DIR
 from backend.config.settings import settings
 from backend.utils.logger import get_logger
 
@@ -27,12 +28,15 @@ class InteractionDatasetCollector:
         enabled: bool | None = None,
     ) -> None:
         self._enabled = enabled if enabled is not None else getattr(settings, "DATA_COLLECTION_ENABLED", False)
-        self._raw_dir = Path(raw_storage_dir or getattr(settings, "DATASET_STORAGE_DIR", "backend/dataset/raw"))
-        self._training_dir = Path(training_storage_dir or getattr(settings, "TRAINING_DATASET_DIR", "backend/dataset/training_ready"))
+        self._raw_dir = Path(raw_storage_dir or getattr(settings, "DATASET_STORAGE_DIR", str(DATASET_DIR / "raw")))
+        self._training_dir = Path(training_storage_dir or getattr(settings, "TRAINING_DATASET_DIR", str(DATASET_DIR / "training_ready")))
 
         if self._enabled:
-            self._raw_dir.mkdir(parents=True, exist_ok=True)
-            self._training_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                self._raw_dir.mkdir(parents=True, exist_ok=True)
+                self._training_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as exc:
+                logger.warning("Could not create interaction dataset directories: %s", exc)
 
     @property
     def enabled(self) -> bool:
@@ -215,9 +219,12 @@ class InteractionDatasetCollector:
             qualification_reasons=["User human correction record"],
         )
 
-        cat_dir = self._training_dir / DatasetCategory.CORRECTION.value
-        cat_dir.mkdir(parents=True, exist_ok=True)
-        ready_path = cat_dir / f"{record.sample_id}.json"
-        ready_path.write_text(json.dumps(record.to_dict(), indent=2), encoding="utf-8")
+        try:
+            cat_dir = self._training_dir / DatasetCategory.CORRECTION.value
+            cat_dir.mkdir(parents=True, exist_ok=True)
+            ready_path = cat_dir / f"{record.sample_id}.json"
+            ready_path.write_text(json.dumps(record.to_dict(), indent=2), encoding="utf-8")
+        except Exception as exc:
+            logger.warning("Failed to persist user correction record: %s", exc)
 
         return record

@@ -36,22 +36,35 @@ elif hasattr(sys.modules["backend"], "__path__"):
 
 import uvicorn
 try:
+    from backend.services.preflight_service import run_preflight_checks, warmup_microphone_background
     from backend.api.app import create_app
     from backend.config.settings import settings
     from backend.utils.logger import get_logger
 except ModuleNotFoundError:
+    from services.preflight_service import run_preflight_checks, warmup_microphone_background
     from api.app import create_app
     from config.settings import settings
     from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Run pre-flight health checks before mounting routes or starting threads
+try:
+    preflight_status = run_preflight_checks()
+except Exception as exc:
+    logger.critical("Pre-flight check aborted startup: %s", exc)
+    raise
+
+# Prime microphone in a non-blocking background thread
+warmup_microphone_background()
+
 app = create_app()
 
 if __name__ == "__main__":
     import os
     logger.info("[MAIN] Starting IRIS AI Backend in single-process mode (PID=%d)", os.getpid())
     print("SERVER_READY", flush=True)
-    uvicorn.run(
+    config = uvicorn.Config(
         app,
         host=settings.API_HOST,
         port=settings.API_PORT,
@@ -59,3 +72,6 @@ if __name__ == "__main__":
         workers=1,
         log_level="debug" if settings.DEBUG else "info",
     )
+    server = uvicorn.Server(config)
+    app.state.server = server
+    server.run()

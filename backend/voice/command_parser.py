@@ -50,6 +50,8 @@ class VoiceIntentType(str, Enum):
     EXIT_APPLICATION = "EXIT_APPLICATION"
     TAKE_SCREENSHOT = "TAKE_SCREENSHOT"
     GREETING = "GREETING"
+    DOCUMENT_SEARCH = "DOCUMENT_SEARCH"
+    OPEN_FILE = "OPEN_FILE"
     NO_INTENT = "NO_INTENT"
 
 
@@ -205,6 +207,30 @@ class IntentParserService:
             logger.info("- matched rule: empty")
             logger.info("- detectedIntent: %s", VoiceIntentType.NO_INTENT.value)
             return VoiceIntent(intent=VoiceIntentType.NO_INTENT, text=text)
+
+        # Document search matching (checked before browser search)
+        from backend.voice.command_engine import extract_document_search_intent
+        doc_query = extract_document_search_intent(text) or extract_document_search_intent(normalized)
+        if doc_query:
+            logger.info("Voice intent document search: %s query=%s", VoiceIntentType.DOCUMENT_SEARCH.value, doc_query)
+            logger.info("- matched rule: document-search")
+            logger.info("- detectedIntent: %s", VoiceIntentType.DOCUMENT_SEARCH.value)
+            return VoiceIntent(
+                intent=VoiceIntentType.DOCUMENT_SEARCH,
+                text=text,
+                confidence=0.95,
+                query=doc_query,
+                params={"query": doc_query},
+            )
+
+        if normalized in ("open file", "open the file", "open document", "open the document", "open result", "open the result", "open top result"):
+            logger.info("- matched rule: open-file")
+            logger.info("- detectedIntent: %s", VoiceIntentType.OPEN_FILE.value)
+            return VoiceIntent(
+                intent=VoiceIntentType.OPEN_FILE,
+                text=text,
+                confidence=0.95,
+            )
 
         browser_search = self._parse_browser_search(normalized, text)
         if browser_search is not None:

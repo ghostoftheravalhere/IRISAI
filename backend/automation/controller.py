@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Literal
 
+from backend.core.config.settings import RECORDINGS_DIR
 from backend.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -184,7 +185,7 @@ class DesktopController:
     def __init__(self, screenshot_dir: str | Path | None = None) -> None:
         self._pyautogui: Any | None = None
         self._lock = RLock()
-        self._screenshot_dir = Path(screenshot_dir) if screenshot_dir else Path.cwd() / "screenshots"
+        self._screenshot_dir = Path(screenshot_dir) if screenshot_dir else RECORDINGS_DIR / "screenshots"
 
     def open_chrome(self) -> bool:
         """Launch Google Chrome using the platform launcher."""

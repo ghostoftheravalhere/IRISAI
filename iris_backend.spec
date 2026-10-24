@@ -27,6 +27,9 @@ hiddenimports = [
     'ctypes',
     'ctypes.wintypes',
     'backend.eye_tracking.click_feedback_overlay',
+    'backend.services.preflight_service',
+    'backend.security.face_auth_service',
+    'backend.api.routes.auth',
 ]
 
 packages_to_collect = [

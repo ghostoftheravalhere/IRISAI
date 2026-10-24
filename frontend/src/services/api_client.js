@@ -120,6 +120,27 @@ export class IRISApiClient {
     return res.ok ? res.data : { connected: false, running: false };
   }
 
+  static async recalibrateCenter(neutralX = null, neutralY = null) {
+    const body = neutralX !== null && neutralY !== null ? { neutral_x: neutralX, neutral_y: neutralY } : {};
+    const res = await safeFetchJson(`${API_BASE_URL}/api/eye/recalibrate-center`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.ok ? res.data : { success: false, error: res.error };
+  }
+
+  static async recalibrateCursor(neutralX = null, neutralY = null) {
+    const body = neutralX !== null && neutralY !== null ? { neutral_x: neutralX, neutral_y: neutralY } : {};
+    const res = await safeFetchJson(`${API_BASE_URL}/api/cursor/recalibrate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return res.ok ? res.data : { success: false, error: res.error };
+  }
+
+
   static async getDiagnostics() {
     const res = await safeFetchJson(`${API_BASE_URL}/api/v1/diagnostics`);
     return res.ok ? res.data : null;
@@ -130,9 +151,30 @@ export class IRISApiClient {
     return res.ok ? res.data : null;
   }
 
-  static async restartCalibration() {
-    const res = await safeFetchJson(`${API_BASE_URL}/eye/calibration/restart`, { method: "POST" });
-    return res.ok ? res.data : { error: res.error };
+  static async calibrate(mode = null) {
+    let modeStr = null;
+    if (typeof mode === "string") {
+      modeStr = mode.trim();
+    } else if (mode && typeof mode === "object" && typeof mode.mode === "string") {
+      modeStr = mode.mode.trim();
+    }
+    const payload = modeStr ? { mode: modeStr } : {};
+    const res = await safeFetchJson(`${API_BASE_URL}/api/eye/calibrate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) return res.data;
+    const fallback = await safeFetchJson(`${API_BASE_URL}/eye/calibration/restart`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return fallback.ok ? fallback.data : { error: fallback.error };
+  }
+
+  static async restartCalibration(mode = null) {
+    return IRISApiClient.calibrate(mode);
   }
 
   static async captureCalibrationPoint() {
@@ -157,8 +199,16 @@ export class IRISApiClient {
   }
 
   static async getCursorStatus() {
-    const res = await safeFetchJson(`${API_BASE_URL}/api/cursor/status`);
-    return res.ok ? res.data : { active: false, enabled: false, error: res.error };
+    const res = await safeFetchJson(`${API_BASE_URL}/eye/cursor/status`);
+    if (res.ok) {
+      return {
+        active: Boolean(res.data?.trackingActive),
+        enabled: Boolean(res.data?.enabled),
+        ...res.data,
+      };
+    }
+    const fallback = await safeFetchJson(`${API_BASE_URL}/api/cursor/status`);
+    return fallback.ok ? fallback.data : { active: false, enabled: false, error: fallback.error };
   }
 
   static async toggleCursor(enabled = null) {
@@ -207,6 +257,21 @@ export class IRISApiClient {
     const res = await safeFetchJson(`${API_BASE_URL}/api/v1/apps`);
     return res.ok ? res.data : { applications: [] };
   }
+
+  static async getCalibrationProgress() {
+    const res = await safeFetchJson(`${API_BASE_URL}/eye/calibration/progress`);
+    return res.ok ? res.data : null;
+  }
+
+  static async getCalibrationState() {
+    const res = await safeFetchJson(`${API_BASE_URL}/eye/calibration/state`);
+    return res.ok ? res.data : null;
+  }
+
+  static async getCalibrationGuidance() {
+    const res = await safeFetchJson(`${API_BASE_URL}/eye/calibration/guidance`);
+    return res.ok ? res.data : null;
+  }
 }
 
 export class IRISWebSocketClient {
@@ -225,7 +290,9 @@ export class IRISWebSocketClient {
       if (this.ws) {
         try {
           this.ws.close();
-        } catch (e) {}
+        } catch {
+          // Ignore transient websocket close errors
+        }
       }
       this.ws = new WebSocket(WS_BASE_URL);
       this.ws.onopen = () => {
@@ -270,7 +337,9 @@ export class IRISWebSocketClient {
     if (this.ws) {
       try {
         this.ws.close();
-      } catch (e) {}
+      } catch {
+        // Ignore transient websocket close errors
+      }
     }
   }
 }

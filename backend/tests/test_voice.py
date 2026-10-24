@@ -10,7 +10,12 @@ from backend.automation.controller import ApplicationCloseResult, DesktopControl
 from backend.automation.dispatcher import AutomationDispatcher
 from backend.voice.command_parser import IntentParserService, VoiceIntentType
 from backend.voice.pipeline import VoiceCommandPipeline
-from backend.voice.recognizer import ListenMode, VoiceRecognitionConfig, VoiceRecognitionService
+from backend.voice.recognizer import (
+    ListenMode,
+    VoiceRecognitionConfig,
+    VoiceRecognitionService,
+    _COMMAND_INITIAL_PROMPT,
+)
 
 
 class _FakeActionEngine:
@@ -228,7 +233,7 @@ def test_voice_recognition_silence_does_not_produce_actionable_transcript():
     transcript = service._transcribe(np.zeros(service._config.sample_rate, dtype=np.float32))
 
     assert transcript == ""
-    assert fake_model.calls[-1]["initial_prompt"] is None
+    assert fake_model.calls[-1]["initial_prompt"] == _COMMAND_INITIAL_PROMPT
     assert fake_model.calls[-1]["vad_filter"] is False
     assert fake_model.calls[-1]["no_speech_threshold"] == service._config.no_speech_threshold
 
@@ -243,7 +248,7 @@ def test_voice_recognition_low_noise_does_not_produce_actionable_transcript():
     transcript = service._transcribe(low_noise)
 
     assert transcript == ""
-    assert fake_model.calls[-1]["initial_prompt"] is None
+    assert fake_model.calls[-1]["initial_prompt"] == _COMMAND_INITIAL_PROMPT
     assert fake_model.calls[-1]["vad_filter"] is False
     assert fake_model.calls[-1]["no_speech_threshold"] == service._config.no_speech_threshold
 
@@ -318,15 +323,13 @@ def test_ptt_bypasses_rms_gating_and_flushes_on_release():
 
 
 class _PromptSensitiveWhisperModel:
-    """Regression fake: command prompts turn non-speech into command text."""
+    """Mock Whisper model for voice unit tests."""
 
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
     def transcribe(self, audio, **kwargs):
         self.calls.append(kwargs)
-        if kwargs.get("initial_prompt"):
-            return [SimpleNamespace(text="Copy.", no_speech_prob=0.0)], object()
         return [], object()
 
 

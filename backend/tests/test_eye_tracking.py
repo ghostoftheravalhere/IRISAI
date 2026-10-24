@@ -312,7 +312,7 @@ def test_point_specific_retry_preserves_previous_points() -> None:
 def test_all_9_points_full_calibration_flow() -> None:
     """All 9 points must record and compute valid mapping with dynamic RMSE."""
     config = EyeInteractionConfig()
-    service = EyeCalibrationService(eye_config=config)
+    service = EyeCalibrationService(eye_config=config, mode="9-point")
 
     for i in range(9):
         pt = service.points[i]

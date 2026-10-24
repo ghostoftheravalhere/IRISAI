@@ -11,7 +11,7 @@ router = APIRouter(tags=["voice"])
 class VoiceStatusResponse(BaseModel):
     """Voice recognition status response."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     microphoneStatus: str
     listening: bool
@@ -21,13 +21,15 @@ class VoiceStatusResponse(BaseModel):
     detectedIntent: str | None
     executionStatus: str
     error: str | None
+    ready: bool = True
+    deviceAvailable: bool = True
     message: str | None = None
 
 
 class VoiceModeRequest(BaseModel):
     """Request body for switching listen mode."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     mode: str = Field(description="continuous or push_to_talk")
 
@@ -35,12 +37,13 @@ class VoiceModeRequest(BaseModel):
 class VoiceStartRequest(BaseModel):
     """Optional start options."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     mode: str | None = Field(default=None, description="continuous or push_to_talk")
 
 
 def _serialize(state: VoiceRecognitionState, message: str | None = None) -> dict[str, object]:
+    ready_val = getattr(state, "ready", True)
     payload: dict[str, object] = {
         "microphoneStatus": state.microphoneStatus,
         "listening": state.listening,
@@ -50,6 +53,8 @@ def _serialize(state: VoiceRecognitionState, message: str | None = None) -> dict
         "detectedIntent": state.detectedIntent,
         "executionStatus": state.executionStatus,
         "error": state.error,
+        "ready": ready_val,
+        "deviceAvailable": ready_val,
     }
     if message is not None:
         payload["message"] = message
@@ -58,8 +63,16 @@ def _serialize(state: VoiceRecognitionState, message: str | None = None) -> dict
 
 @router.get("/status", response_model=VoiceStatusResponse)
 async def voice_status(request: Request) -> dict[str, object]:
-    """Return the current voice recognition status."""
-    return _serialize(request.app.state.voice.get_state())
+    """Return the current voice recognition status, verifying device availability."""
+    voice = request.app.state.voice
+    state = voice.get_state()
+    device_ok = voice.verify_device_available() if hasattr(voice, "verify_device_available") else True
+    payload = _serialize(state)
+    payload["ready"] = device_ok
+    payload["deviceAvailable"] = device_ok
+    if device_ok and payload.get("microphoneStatus") == "Off":
+        payload["microphoneStatus"] = "Ready"
+    return payload
 
 
 @router.post("/start", response_model=VoiceStatusResponse)
